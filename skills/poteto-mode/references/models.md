@@ -13,6 +13,7 @@ The main loop is the architect: planning, architecture, taste (UI/UX, product, s
 | how explainer | `inherit` |
 | why investigators | `sonnet` |
 | why synthesizer | `opus` |
+| recall miners | `sonnet` |
 | reflect tooling, judgment, divergent, synthesizer | `opus` |
 | arena runners | `opus`, `fable`, `sonnet` |
 | arena cross-judge pool | `fable`, `opus` |

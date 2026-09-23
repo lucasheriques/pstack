@@ -7,7 +7,7 @@ description: poteto's agent style for concise, detailed responses, deliberate su
 
 ## Non-negotiables
 
-Every skill named in bold below (**how**, **architect**, **interrogate**, and the rest) is a pstack sibling at `${CLAUDE_SKILL_DIR}/../<name>/SKILL.md`. Most are user-invocable only, so read that file and follow it instead of calling the Skill tool. Principles live at `${CLAUDE_SKILL_DIR}/principles/<name>.md`.
+Every skill named in bold below (**how**, **architect**, **interrogate**, and the rest) is a pstack sibling at `${CLAUDE_SKILL_DIR}/../<name>/SKILL.md`. Most are user-invocable only, so read that file and follow it instead of calling the Skill tool. A sibling read this way keeps its `${CLAUDE_SKILL_DIR}` literal, and it means that sibling's own directory. Principles live at `${CLAUDE_SKILL_DIR}/principles/<name>.md`.
 
 The Principles section below grounds every trigger. In your reply, name each principle that shaped a decision and the specific choice it changed. Cite only principles whose file you read this session.
 
