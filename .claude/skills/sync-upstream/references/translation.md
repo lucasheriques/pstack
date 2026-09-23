@@ -8,7 +8,7 @@ The standing rules for porting upstream pstack text. `bun scripts/check-port.ts`
 |---|---|
 | `Task` tool, Task call | the Agent tool |
 | `subagent_type: "generalPurpose"` | `subagent_type: "general-purpose"` |
-| `readonly: true` on a Task | `subagent_type: "pstack:read-only"` (Edit, Write, NotebookEdit disallowed; MCP tools still available) |
+| `readonly: true` on a Task | `subagent_type: "pstack:read-only"` (Edit, Write, NotebookEdit disallowed; MCP tools still available). Weaker than Cursor's flag: Bash stays available because investigators need `git` and `gh`, so read-only on the shell is enforced by the agent's prompt, not the harness |
 | `poteto-agent` | `subagent_type: "pstack:poteto-agent"` |
 | `Comment Sicko` | `subagent_type: "pstack:comment-sicko"` |
 | `run_in_background: true` | same parameter, and the default |
@@ -60,3 +60,14 @@ These override upstream wherever they conflict.
 - **Comments.** Never remove a comment that existed before this change. Comment cleanup (`no-comments`, `comment-sicko`) touches only comments this change added.
 - **Delegation.** The main loop is the architect and reviews every delegated commit. `sonnet` is the default doer, `opus` when hard (say so), never `haiku`. Always tell the user what was delegated and to whom. The architect runs the proof itself and does not hand verification of its own work to a subagent. Review panels (`interrogate`, `arena` judges) are separate reviewers, not self-verification.
 - **Chat output.** No ligature characters: write `->`, `!=`, `>=`. Never estimate time. Estimate by complexity.
+
+## Deliberate departures
+
+A sync must keep these even when upstream's line differs.
+
+- `interrogate`, `typescript-best-practices`, and `poteto-mode` drop `disable-model-invocation`. interrogate is the pre-PR gate CLAUDE.md names, typescript-best-practices needs its `paths:` trigger, and poteto-mode is the auto-invoked entry point. Every other skill keeps the flag.
+- poteto-mode's Autonomy pauses for anything sent as the user (team chat, comments on other people's PRs) and for merges. Upstream let team chat proceed.
+- automate-me writes the mode skill to `~/.claude/skills/<handle>-mode/` instead of a project skill shipped by PR.
+- Autopilot-full needs an explicit merge grant. Babysit and Shipping never merge without an explicit request.
+- orchestrate and swarm isolation: remote by default for orchestrate workers, and a worktree for any swarm worker that checks out, builds, or runs.
+- models.md panels: interrogate runs two reviewers (`opus`, `fable`), not three. `sonnet` shares opus's family and mostly adds noise to adversarial review.
