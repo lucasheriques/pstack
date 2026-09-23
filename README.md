@@ -1,14 +1,13 @@
 # pstack for Claude Code
 
-A Claude Code port of [pstack](https://github.com/cursor/plugins/tree/main/pstack), [poteto](https://x.com/poteto)'s skills for shipping less, but higher quality, code. The playbooks, principles, and review panels are poteto's. This repo translates them from Cursor's harness to Claude Code's, keeps them in sync with upstream, and layers in my own house rules.
+This is an unofficial port of [pstack](https://github.com/cursor/plugins/tree/main/pstack) to Claude Code. pstack is written and maintained by [poteto](https://x.com/poteto) for Cursor. I'm not poteto, just a fan who wanted the same workflow in Claude Code.
 
-> if you want to go fast, go deep first.
+Everything that makes pstack good is poteto's work: the playbooks, the principles, the review panels, and the idea behind them ("if you want to go fast, go deep first"). This repo only ports it. It translates the skills from Cursor's tools, models, and paths to Claude Code's, and merges upstream changes as they land. For the original, its docs, and to credit or support the author, go to [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack).
 
 ## Install
 
 ```bash
-git clone https://github.com/lucasheriques/pstack ~/src/pstack
-claude plugin marketplace add ~/src/pstack
+claude plugin marketplace add lucasheriques/pstack
 claude plugin install pstack@pstack
 ```
 
@@ -54,7 +53,7 @@ The 23 principles live in `skills/poteto-mode/principles/`. poteto-mode reads th
 
 - **Claude models only.** Roles map to `sonnet`, `opus`, and `fable` in [`skills/poteto-mode/references/models.md`](skills/poteto-mode/references/models.md). Edit that file to change a role. It replaces `/setup-pstack`.
 - **Harness.** `Task` becomes the Agent tool, `readonly` becomes the `pstack:read-only` agent, `/deslop` becomes `/simplify`, `control-ui` and `control-cli` become `claude-in-chrome` and the `run` skill, and the Origin forge is gone in favor of `gh` and `gh stack`.
-- **House rules.** Draft PRs first, with `interrogate` as the gate before marking ready. Merging stays with the human. Comment cleanup never touches pre-existing comments.
+- **My house rules.** A few defaults follow my own workflow instead of poteto's: draft PRs first, with `interrogate` as the gate before marking ready. Merging stays with the human. Comment cleanup never touches pre-existing comments.
 - **Not shipped.** benny, make-bot-ui, setup-pstack, and the guide. They depend on Cursor.
 
 The full mapping is in [`.claude/skills/sync-upstream/references/translation.md`](.claude/skills/sync-upstream/references/translation.md).
