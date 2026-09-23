@@ -27,7 +27,7 @@ Open a todolist with one entry per phase before launching anything.
 
 ## Phase B: Fan out
 
-Spawn all N workers with the Agent tool in one message with `subagent_type: "general-purpose"`, `run_in_background: true`, the configured model, and `isolation: "worktree"` for a worker that writes. Use `isolation: "remote"` only when the worker must outlive this session.
+Spawn all N workers with the Agent tool in one message with `subagent_type: "general-purpose"`, `run_in_background: true`, the configured model, and `isolation: "worktree"` for any worker that checks out a branch, builds, runs the app, or writes. Workers that share the parent's checkout race each other. Use `isolation: "remote"` only when the worker must outlive this session.
 
 When a worker must start from a non-default pushed branch, its brief names the branch and SHA to check out first.
 

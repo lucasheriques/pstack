@@ -28,7 +28,7 @@ Skip Phase A only when the work is genuinely greenfield with no surrounding syst
 
 ## Phase B: Sketch
 
-Run the **arena** skill (`${CLAUDE_SKILL_DIR}/../arena/SKILL.md`) with the design-sketch task and the Phase A grounding artifacts. Pass `${CLAUDE_SKILL_DIR}/references/runner-prompt.md` as each runner's prompt. Each candidate produces a design package shaped per `${CLAUDE_SKILL_DIR}/references/rationale-template.md`.
+Run the **arena** skill (`${CLAUDE_SKILL_DIR}/../arena/SKILL.md`) with the design-sketch task and the Phase A grounding artifacts. Pass `${CLAUDE_SKILL_DIR}/references/runner-prompt.md` as each runner's prompt, with its paths made absolute first, because runners do not load this skill: `../SKILL.md` becomes `${CLAUDE_SKILL_DIR}/SKILL.md`, and each **principle-<name>** gets its file, `${CLAUDE_SKILL_DIR}/../poteto-mode/principles/principle-<name>.md`. Each candidate produces a design package shaped per `${CLAUDE_SKILL_DIR}/references/rationale-template.md`.
 
 Use the `architect runners` role from `${CLAUDE_SKILL_DIR}/../poteto-mode/references/models.md`, one runner per entry.
 

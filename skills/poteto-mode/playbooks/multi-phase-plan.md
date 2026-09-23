@@ -55,7 +55,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 ### PR mechanics, for every PR
 
 - [ ] Use `gh` for every PR operation and `gh stack` for every stack. Never use `gt`.
-- [ ] Open the PR as a draft with `gh pr create --draft --base <base-branch>`. A stack child targets its parent branch through `gh stack submit`.
+- [ ] Open the PR as a draft with `gh pr create --draft --base <base-branch>`. A stack child targets its parent branch through `gh stack submit --auto`.
 - [ ] Mark the PR ready with `gh pr ready` only after self-proof passes and **interrogate** against trunk is clean. Record each finding as fixed or dismissed.
 - [ ] Run the repo's lint and typecheck once before the PR-facing push. Push with hooks on.
 - [ ] Run `/simplify` before each commit and `/no-comments` before review.
