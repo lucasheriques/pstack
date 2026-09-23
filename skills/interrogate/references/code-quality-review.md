@@ -34,6 +34,8 @@ Each dimension is stated once. Apply the ones that are relevant.
 
 7. **Treat unnecessary sequential orchestration and non-atomic updates as design smells when the cleaner structure is obvious.** If independent work is serialized for no reason, ask whether it should run in parallel. If related updates can leave state half-applied, push for a more atomic structure. Do not over-index on micro-optimizations, but do flag avoidable orchestration complexity that makes the code more brittle.
 
+8. **Hide each design decision in one place.** Flag information leakage: the same decision reflected in several modules, or an internal representation exposed through an interface. Prefer pulling complexity down into the module over pushing a new option or parameter onto every caller. Prefer an API where the error case cannot arise over a new special-case branch.
+
 ## Output Expectations
 
 Prioritize structural code-quality regressions and missed simplifications first, then spaghetti and branching complexity, then boundary, type, and file-size concerns, then smaller modularity and legibility issues.
