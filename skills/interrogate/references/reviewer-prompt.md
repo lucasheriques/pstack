@@ -26,9 +26,13 @@ You are reviewing whether the code achieves this intent well. Do NOT question th
 
 {CODE_QUALITY_CONTENTS}
 
+## Blind-spot Lenses
+
+{BLIND_SPOT_CONTENTS}
+
 ## Instructions
 
-Review the code through every lens in the rubric and the code-quality lens above that you find relevant. Do not force lenses that don't apply. A simple bug fix does not need paragraphs about architectural integrity.
+Review the code through every lens in the rubric, the code-quality lens, and the blind-spot lenses above that you find relevant. Do not force lenses that don't apply. A simple bug fix does not need paragraphs about architectural integrity.
 
 For each finding, provide:
 

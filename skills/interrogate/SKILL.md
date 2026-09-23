@@ -1,7 +1,6 @@
 ---
 name: interrogate
-description: "Use for \"interrogate\", \"adversarial review\", \"multi-model review\", \"challenge this\", \"stress test this code\", \"find blind spots\", or \"tear this apart\". Multiple LLM reviewers challenge changes from independent angles."
-disable-model-invocation: true
+description: "Use for \"interrogate\", \"adversarial review\", \"multi-model review\", \"challenge this\", \"stress test this code\", \"find blind spots\", \"tear this apart\", reviewing someone else's PR, and as the pre-PR gate before marking a PR ready. Multiple LLM reviewers challenge changes from independent angles."
 ---
 
 # Interrogate
@@ -16,6 +15,7 @@ Identify what to review from context:
 
 - If the user points at specific files or a diff, use that
 - If on a feature branch, run `git diff main...HEAD` (or the appropriate base branch) for the full changeset
+- If given a PR number or URL, use `gh pr view <pr> --json title,body,baseRefName,headRefOid,files` and `gh pr diff <pr>`
 - If the user's message references recent work, gather the relevant files
 
 Package the diff (or file contents) plus any surrounding context files the reviewers need to understand the code.
@@ -33,26 +33,20 @@ Write one clear paragraph. If you're unsure about the intent, ask the user befor
 
 ## Step 3, Spawn Reviewers
 
-Launch all reviewers in a single message using the Task tool. Use the `interrogate reviewers` list from `~/.cursor/rules/pstack-models.mdc` when present, one reviewer per entry, extending or shrinking the Reviewer A/B/C labels below to the configured entry count. Otherwise use the table defaults.
-
-| Subagent | Default model |
-|----------|---------------|
-| Reviewer A | `claude-opus-5-5-max` |
-| Reviewer B | `gpt-5.6-sol-max` |
-| Reviewer C | `grok-4.7-xhigh-fast` |
+Launch all reviewers in a single message using the Agent tool, one reviewer per entry in the `interrogate reviewers` list of `${CLAUDE_SKILL_DIR}/../poteto-mode/references/models.md`, labeled Reviewer A, B, and so on.
 
 For each reviewer:
-- `subagent_type`: `generalPurpose`
-- `model`: the configured `interrogate reviewers` entry, or the table default with no configured line
-- `readonly`: `true`
+- `subagent_type`: `pstack:read-only`
+- `model`: that entry
 
-If a model slug is rejected as unresolvable when you try to spawn the subagent, check the valid slugs in the Task tool's error message, pick the closest equivalent (prefer the highest-reasoning tier of the same family), spawn with the valid slug, and open a separate PR to update the configured value or default table. Do not block the review on the slug issue. If the configured value is `inherit-parent` or `auto`, omit `model` instead. Never treat those aliases as broken slugs or enter this fallback for them.
-
-Read `references/reviewer-prompt.md` and fill in the template with:
+Read `${CLAUDE_SKILL_DIR}/references/reviewer-prompt.md` and fill in the template with:
 1. The stated intent
 2. The diff or file contents
-3. The review rubric from `references/rubric.md`
-4. The code-quality lens from `references/code-quality-review.md`
+3. The review rubric from `${CLAUDE_SKILL_DIR}/references/rubric.md`
+4. The code-quality lens from `${CLAUDE_SKILL_DIR}/references/code-quality-review.md`
+5. The blind-spot lenses from `${CLAUDE_SKILL_DIR}/references/blind-spots.md` that the diff calls for, or "none"
+
+If CodeScene MCP tools are available (ToolSearch `codescene`), run `analyze_change_set` against the base yourself while the reviewers work. Treat each located code-health regression as one more reviewer finding. Without the tools, skip this silently.
 
 The same filled template goes to all reviewers, so every model applies the code-quality lens.
 
@@ -70,7 +64,7 @@ As results come back, build a unified picture:
 
 You are the lead reviewer, a pragmatic senior engineer, not a neutral aggregator.
 
-Read `references/lead-judgment.md` for the full framework.
+Read `${CLAUDE_SKILL_DIR}/references/lead-judgment.md` for the full framework. Before you place a finding in **Act on** or **Consider**, check it against the source yourself: read the cited lines, trace the call site, and run the cheapest repro. A finding you cannot reproduce from source goes to **Dismissed** with the reason.
 
 Categorize every finding using these buckets:
 
@@ -108,3 +102,7 @@ Present the verdict in this structure:
 
 ### Agreement Map
 [Where did models agree, where did they diverge, and what does the pattern of agreement/disagreement tell us?]
+
+## Someone else's PR
+
+When the PR belongs to another author, the verdict becomes review comments that person will read. Turn **Act on** and **Consider** findings into comments per `${CLAUDE_SKILL_DIR}/references/review-comments.md`, run them through the **unslop** skill (`${CLAUDE_SKILL_DIR}/../unslop/SKILL.md`), and show the full draft to the user. Post nothing until the user explicitly says to.
