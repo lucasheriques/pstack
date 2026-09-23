@@ -1,0 +1,15 @@
+{
+  "name": "pstack",
+  "description": "poteto's pstack for Claude Code, synced from cursor/plugins.",
+  "owner": {
+    "name": "Lucas Faria",
+    "url": "https://github.com/lucasheriques"
+  },
+  "plugins": [
+    {
+      "name": "pstack",
+      "source": "./",
+      "description": "poteto's pstack, ported to Claude Code."
+    }
+  ]
+}
