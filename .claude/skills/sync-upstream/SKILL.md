@@ -11,7 +11,7 @@ This repo is two branches. `upstream` is a verbatim mirror of `cursor/plugins/ps
 
 1. **Branch.** From a worktree off `main`, create `sync/upstream-<date>`.
 2. **Mirror.** Run `scripts/sync-upstream.sh`. It commits the new upstream snapshot to `upstream`, or reports that nothing changed. If nothing changed, stop and say so.
-3. **Read why.** `gh api 'repos/cursor/plugins/commits?path=pstack&per_page=30'` lists upstream's commits since the last synced SHA (in the `upstream` branch's last commit subject). Read the messages of the new ones so the merge preserves poteto's intent, not just his text.
+3. **Read why.** `gh api 'repos/cursor/plugins/commits?path=pstack&per_page=30'` lists upstream's commits since the last synced SHA (in the `upstream` branch's last commit subject). Read the messages of the new ones so the merge preserves poteto's intent, not just the text.
 4. **Merge.** `git merge upstream`. Resolve each conflict per `references/translation.md`: take upstream's new substance and keep the port's translation of it. Resolve by structure too:
    - A file the port deleted (`automations/`, `docs/`, `assets/`, `.cursor-plugin/`, `skills/make-bot-ui/`, `skills/setup-pstack/`) stays deleted. Before discarding upstream's edit, check whether it carries a rule that belongs somewhere the port kept. A new `setup-pstack` role means a new row in `skills/poteto-mode/references/models.md`.
    - `README.md` is the port's own. Keep ours, and add any new skill to its table.
