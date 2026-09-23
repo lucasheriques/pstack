@@ -15,6 +15,8 @@ The standing rules for porting upstream pstack text. `bun scripts/check-port.ts`
 | `AskQuestion` | `AskUserQuestion` |
 | `is_background: true` (agent frontmatter) | `background: true` |
 | `mode: true`, `reminder:`, `icon:`, `color:` (skill frontmatter) | delete. poteto-mode is model-invocable instead of sticky |
+| agent `name:` with spaces or capitals | kebab-case. The `subagent_type` is `pstack:<name>` |
+| one skill routing to another ("the **how** skill") | keep upstream's `disable-model-invocation: true`, which hides a skill from the Skill tool entirely, and have the caller read `${CLAUDE_SKILL_DIR}/../<name>/SKILL.md`. poteto-mode states this once for its playbooks |
 | Cursor plan mode | Claude Code plan mode |
 | Cursor cloud agent | a background subagent with `isolation: "worktree"`, or `isolation: "remote"` when it must outlive the session |
 | Cursor restart | Claude Code restart or context compaction |
