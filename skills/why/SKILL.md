@@ -8,17 +8,17 @@ disable-model-invocation: true
 
 Investigate the motivation and intent behind code.
 
-Companion to the `how` skill. `how` answers what the code does and how it works. `why` answers what forces led to its shape.
+Companion to the **how** skill (`${CLAUDE_SKILL_DIR}/../how/SKILL.md`). `how` answers what the code does and how it works. `why` answers what forces led to its shape.
 
 ## Operating Posture
 
-Operate as a **careful, cautious, and precise investigator**. Be honest about what you know vs what you're inferring. Read `references/epistemics.md` for the full confidence framework and phrasing guide. The synthesizer must follow it.
+Operate as a **careful, cautious, and precise investigator**. Be honest about what you know vs what you're inferring. Read `${CLAUDE_SKILL_DIR}/references/epistemics.md` for the full confidence framework and phrasing guide. The synthesizer must follow it.
 
 ## Step 1. Understand the Target and the Question
 
 Parse what the user is asking. The **target** is usually a chunk of code, a pattern, a feature, or a named design decision. The **question** is usually a design rationale, a tradeoff, a motivating edge case, an external constraint, dead code, or a broad history sweep.
 
-If the target is vague ("why do we do it this way?" with no clear referent), make your best guess from conversation context (open files, recent edits, cursor location, what was just discussed). State your interpretation briefly so the user can redirect if you're off, then proceed.
+If the target is vague ("why do we do it this way?" with no clear referent), make your best guess from conversation context (open files, the IDE selection, recent edits, what was just discussed). State your interpretation briefly so the user can redirect if you're off, then proceed.
 
 ## Step 2. Establish the Code Anchor
 
@@ -59,7 +59,7 @@ Capture this as seed context (file paths, symbols, commits, PR numbers, linked t
 
 ### Discovery
 
-Before spawning investigators, list the available MCPs from the Cursor environment. Use the available-tools map when present. Otherwise inspect the `mcps/` directory Cursor exposes for enabled MCP servers.
+Before spawning investigators, list the MCP servers this session can call. Each connected server shows up as `mcp__<server>__<tool>` tools, some of them deferred (named in a system reminder, schema loaded with ToolSearch), and usually in the system prompt's MCP server instructions. `claude mcp list` shows every configured server and its state. A server marked `Needs authentication` is unavailable until the user authorizes it with `/mcp`, so record it as a gap.
 
 Map each available MCP to one evidence category:
 
@@ -75,17 +75,16 @@ Source control is always available through git and `gh`. For the other six, clas
 
 Aim for a complete **coverage map**, not a minimal one. Document the null, don't skip the search.
 
-Launch all matching investigators in a single message so they run concurrently. Don't ask one agent to cover multiple MCPs.
+Launch all matching investigators with the Agent tool in a single message so they run concurrently. Don't ask one agent to cover multiple MCPs.
 
 Subagent config (each):
-- `subagent_type`: `generalPurpose`
-- `model`: your configured why-investigators model (default `grok-4.7-xhigh-fast`)
-- `readonly`: `false` (agent mode). **Do not use readonly/Ask mode.** It strips MCP access, which disables MCP-backed investigators entirely. Investigators still shouldn't write anything.
+- `subagent_type`: `pstack:read-only`. It keeps MCP access and blocks file edits.
+- `model`: the `why investigators` model from `${CLAUDE_SKILL_DIR}/../poteto-mode/references/models.md`
 
 Each investigator gets:
-1. The base prompt from `references/investigator-prompt.md`
-2. The category playbook `references/sources/<source>.md` for the selected MCP, adapted from the examples in `references/source-playbook.md`
-3. The cross-cutting `references/sources/incident-postmortem.md` **if the target code looks defensive** (null checks, retry logic, timeout handling, rate limiting, feature flags, egress guards, OOM handlers)
+1. The base prompt from `${CLAUDE_SKILL_DIR}/references/investigator-prompt.md`
+2. The category playbook `${CLAUDE_SKILL_DIR}/references/sources/<source>.md` for the selected MCP, adapted from the examples in `${CLAUDE_SKILL_DIR}/references/source-playbook.md`
+3. The cross-cutting `${CLAUDE_SKILL_DIR}/references/sources/incident-postmortem.md` **if the target code looks defensive** (null checks, retry logic, timeout handling, rate limiting, feature flags, egress guards, OOM handlers)
 4. The code anchor from Step 2 (file paths, symbols, commit hashes, PR numbers, ticket IDs)
 5. The user's original question
 
@@ -122,16 +121,15 @@ If your scope assessment suggests a single-commit trivial target where the PR de
 
 Spawn one synthesizer subagent:
 
-- `subagent_type`: `generalPurpose`
-- `model`: your configured why-synthesizer model (default `claude-opus-5-5-max`)
-- `readonly`: `false` (agent mode). The synthesizer's quality check spot-verifies citations, which can require MCP access. Readonly/Ask mode strips MCPs and defeats that.
+- `subagent_type`: `pstack:read-only`. Its quality check spot-verifies citations, which can require MCP access.
+- `model`: the `why synthesizer` model from `models.md`
 
 The synthesizer gets:
 1. The investigator findings, including any null results and any categories skipped with justification
 2. The code anchor from Step 2 (file paths, symbols, commit hashes, PR numbers, ticket IDs)
 3. The user's original question
-4. The epistemics framework from `references/epistemics.md`
-5. The synthesizer prompt template from `references/synthesizer-prompt.md`
+4. The epistemics framework from `${CLAUDE_SKILL_DIR}/references/epistemics.md`
+5. The synthesizer prompt template from `${CLAUDE_SKILL_DIR}/references/synthesizer-prompt.md`
 
 ## Step 5. Present
 
@@ -139,7 +137,7 @@ Take the synthesizer's output and present it to the user. You may lightly edit f
 
 ## Output Format
 
-The output structure is the one in `references/synthesizer-prompt.md`: The Question, The Code in Question, What We Found, What We Can Reasonably Infer, Competing Hypotheses, What We Don't Know, Sources Consulted, Confidence Summary. Adapt as needed, but keep the confidence separation intact, and keep Sources Consulted as one line per investigator, including the ones that returned nothing or were skipped, with the reason.
+The output structure is the one in `${CLAUDE_SKILL_DIR}/references/synthesizer-prompt.md`: The Question, The Code in Question, What We Found, What We Can Reasonably Infer, Competing Hypotheses, What We Don't Know, Sources Consulted, Confidence Summary. Adapt as needed, but keep the confidence separation intact, and keep Sources Consulted as one line per investigator, including the ones that returned nothing or were skipped, with the reason.
 
 After the Sources Consulted block, if the user's `why` question is a precursor to actually changing this code, convert the lineage findings into a Preserve / Change / Avoid / Risk constraint set suitable for planning the change.
 
