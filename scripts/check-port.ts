@@ -1,11 +1,17 @@
 #!/usr/bin/env bun
 // Flags Cursor-isms that the Claude Code port must translate. Run after every
 // upstream merge: each finding is a line that still assumes Cursor's harness.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const repoRoot = join(import.meta.dir, "..");
 const principlesDirectory = join(repoRoot, "skills/poteto-mode/principles");
+const pstackNames = new Set([
+  ...readdirSync(join(repoRoot, "skills")),
+  ...readdirSync(join(repoRoot, "agents")).map(
+    (file) => /^name: (.+)$/m.exec(readFileSync(join(repoRoot, "agents", file), "utf8"))?.[1],
+  ),
+]);
 
 type Rule = {
   name: string;
@@ -19,7 +25,7 @@ const rules: Rule[] = [
   { name: "cursor-team-kit", pattern: /cursor-team-kit|\bdeslop\b|\bcontrol-(ui|cli)\b/ },
   {
     name: "cursor-tool",
-    pattern: /\bAskQuestion\b|\bTask (tool|call|calls|subagent)\b|`Task`|generalPurpose|is_background/,
+    pattern: /\bAskQuestion\b|\bTask (tool|call|calls|subagent)\b|`Task`|generalPurpose|is_background|environment: "(cloud|local)"|\bcloud_base_branch\b|\bShell tool\b/,
   },
   {
     name: "cursor-tool",
@@ -39,6 +45,21 @@ const exemptFiles = /^(README\.md|LICENSE|scripts\/check-port(\.test)?\.ts|\.cla
 
 export type Finding = { path: string; line: number; rule: string; text: string };
 
+function unresolvedSkillPaths(path: string, text: string): string[] {
+  const skillDirectory = /^skills\/[^/]+/.exec(path)?.[0];
+  if (skillDirectory === undefined) return [];
+  return [...text.matchAll(/\$\{CLAUDE_SKILL_DIR\}(\/[^\s`'")]*)/g)]
+    .map(([, relative]) => relative.replace(/[.,:;]+$/, ""))
+    .filter((relative) => !/[<*]/.test(relative))
+    .filter((relative) => !existsSync(join(repoRoot, skillDirectory, relative)));
+}
+
+function unresolvedPstackNames(text: string): string[] {
+  return [...text.matchAll(/\bpstack:([a-z][a-z-]*[a-z])/g)]
+    .map(([, name]) => name)
+    .filter((name) => !pstackNames.has(name));
+}
+
 function unresolvedPrinciples(text: string): string[] {
   return [...text.matchAll(/\bprinciple-[a-z-]*[a-z]/g)]
     .map(([name]) => name)
@@ -51,8 +72,12 @@ export function findingsFor(path: string, text: string): Finding[] {
     const ruleHits = rules
       .filter((rule) => !rule.exemptPaths?.test(path) && rule.pattern.test(lineText))
       .map((rule) => rule.name);
-    const principleHits = unresolvedPrinciples(lineText).map(() => "unresolved-principle");
-    return [...ruleHits, ...principleHits].map((rule) => ({
+    const referenceHits = [
+      ...unresolvedPrinciples(lineText).map(() => "unresolved-principle"),
+      ...unresolvedSkillPaths(path, lineText).map(() => "unresolved-skill-path"),
+      ...unresolvedPstackNames(lineText).map(() => "unresolved-pstack-name"),
+    ];
+    return [...ruleHits, ...referenceHits].map((rule) => ({
       path,
       line: index + 1,
       rule,
@@ -68,7 +93,8 @@ function trackedTextFiles(): string[] {
   return listing.stdout
     .toString()
     .split("\n")
-    .filter((path) => /\.(md|ts|mjs|sh|json|tsv)$|\/watch-pr$/.test(path) && !path.endsWith("bun.lock"));
+    .filter((path) => /\.(md|ts|mjs|sh|json|tsv)$|\/watch-pr$/.test(path) && !path.endsWith("bun.lock"))
+    .filter((path) => existsSync(join(repoRoot, path)));
 }
 
 if (import.meta.main) {

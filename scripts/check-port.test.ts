@@ -21,6 +21,12 @@ describe("findingsFor", () => {
     ["skills/x/SKILL.md", "Follow the **create-skill** skill.", "cursor-builtin-skill"],
     ["skills/x/SKILL.md", "Triage the Bugbot comments.", "cursor-bugbot"],
     ["skills/x/SKILL.md", "Read **principle-made-up-name**.", "unresolved-principle"],
+    ["skills/swarm/SKILL.md", 'Spawn with `environment: "cloud"`.', "cursor-tool"],
+    ["skills/swarm/SKILL.md", "Set `cloud_base_branch` on the worker.", "cursor-tool"],
+    ["skills/reflect/SKILL.md", "Grep the Shell tool calls.", "cursor-tool"],
+    ["skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/references/missing.md`.", "unresolved-skill-path"],
+    ["skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/../nope/SKILL.md`.", "unresolved-skill-path"],
+    ["skills/x/SKILL.md", 'Spawn `subagent_type: "pstack:no-such-agent"`.', "unresolved-pstack-name"],
   ])("%s flags %p as %s", (path, line, rule) => {
     expect(findingsFor(path, line).map((f) => f.rule)).toContain(rule);
   });
@@ -32,6 +38,12 @@ describe("findingsFor", () => {
     ["bugbot reference file path", "skills/x/SKILL.md", "Triage per `references/bugbot-triage.md`."],
     ["resolvable principle", "skills/x/SKILL.md", "Read **principle-laziness-protocol**."],
     ["the port's own README", "README.md", "Ported from Cursor's pstack."],
+    ["an existing skill-relative path", "skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/references/explorer-prompt.md`."],
+    ["a sibling skill path", "skills/teach/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/../how/SKILL.md`."],
+    ["a placeholder path", "skills/poteto-mode/SKILL.md", "Siblings live at `${CLAUDE_SKILL_DIR}/../<name>/SKILL.md`."],
+    ["a pstack agent", "skills/x/SKILL.md", 'Use `subagent_type: "pstack:read-only"`.'],
+    ["a pstack skill", "README.md", "Run /pstack:poteto-mode."],
+    ["a pstack skill in prose", "skills/x/SKILL.md", "Route through `pstack:poteto-mode`."],
   ])("allows %s", (_, path, line) => {
     expect(findingsFor(path, line)).toEqual([]);
   });
