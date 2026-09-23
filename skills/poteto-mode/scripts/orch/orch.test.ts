@@ -103,9 +103,6 @@ async function makeGitStack(directory: string): Promise<{
   };
 }
 
-// gh stack view --json only reports `head` for the trunk branch; stacked
-// branches carry `base` instead. Omit `head` here to match real output —
-// the store must source each branch's sha from git, not from this field.
 function ghStackBranch({
   name,
   pr,
@@ -537,6 +534,7 @@ describe("Store", () => {
     ["OPEN", "OPEN"],
     ["QUEUED", "OPEN"],
     ["MERGED", "MERGED"],
+    ["CLOSED", "CLOSED"],
   ] as const)(
     "maps a gh stack PR state of %s to frontier state %s",
     async (ghState, frontierState) => {

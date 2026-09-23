@@ -974,8 +974,8 @@ function ghStackPrState({
   branch: string;
   state: unknown;
 }): FrontierPrState {
-  if (state === "MERGED") {
-    return "MERGED";
+  if (state === "MERGED" || state === "CLOSED") {
+    return state;
   }
   if (state === "OPEN" || state === "QUEUED") {
     return "OPEN";
