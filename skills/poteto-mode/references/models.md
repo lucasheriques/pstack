@@ -14,7 +14,8 @@ The main loop is the architect: planning, architecture, taste (UI/UX, product, s
 | why investigators | `sonnet` |
 | why synthesizer | `opus` |
 | recall miners | `sonnet` |
-| reflect tooling, judgment, divergent, synthesizer | `opus` |
+| reflect tooling | `fable` |
+| reflect judgment, divergent, synthesizer | `opus` |
 | arena runners | `opus`, `fable`, `sonnet` |
 | arena cross-judge pool | `fable`, `opus` |
 | swarm workers | `sonnet` |
@@ -29,4 +30,4 @@ Prepare the branch before delegating. A doer never commits on the trunk. Branch 
 
 Hand the doer a self-contained spec: the goal in one line, files in bounds, constraints, exact verify commands, and what not to touch. It commits its own work on the current branch once verification passes, lets pre-commit hooks run, and fixes what they catch. Never `--no-verify`. It never pushes or switches branches. If it cannot get hooks passing, that failure report is the deliverable and the architect takes over.
 
-Then review the commit yourself: read `git show HEAD` against the simple-code bar and rerun the tests. Send fixes back to the same agent with `SendMessage`, or amend directly. Never edit files a running subagent is editing. Parallel doers get disjoint file sets and launch in one message.
+Then review the commit yourself: read `git show HEAD` against the simple-code bar and rerun the tests. Send a short fix back to the same agent with `SendMessage`, or amend directly. A scope change gets a fresh agent. Never edit files a running subagent is editing. Parallel doers get disjoint file sets and launch in one message.

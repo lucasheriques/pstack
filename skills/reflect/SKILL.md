@@ -26,7 +26,7 @@ This session's subagent transcripts sit in `<slug>/${CLAUDE_SESSION_ID}/subagent
 
 ### 2. Spawn three reviewers in parallel
 
-One message, three Agent tool calls, `subagent_type: "pstack:read-only"`, and the `reflect` model from `${CLAUDE_SKILL_DIR}/../poteto-mode/references/models.md` on each. `pstack:read-only` keeps MCP access for context lookups (tickets, chat threads, observability traces referenced in the transcript).
+One message, three Agent tool calls, `subagent_type: "pstack:read-only"`, with models from `${CLAUDE_SKILL_DIR}/../poteto-mode/references/models.md`: the `reflect tooling` model for the tooling reviewer and the `reflect judgment, divergent, synthesizer` model for the other two. `pstack:read-only` keeps MCP access for context lookups (tickets, chat threads, observability traces referenced in the transcript).
 
 | Lens | Prompt template |
 |---|---|
@@ -38,7 +38,7 @@ Pass each template verbatim, substituting the transcript path or digest where ma
 
 ### 3. Synthesize
 
-One Agent tool call, `subagent_type: "pstack:read-only"`, on the `reflect` model. The synthesizer's quality check includes spot-verifying citations, which can require MCP access. Use `${CLAUDE_SKILL_DIR}/references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
+One Agent tool call, `subagent_type: "pstack:read-only"`, on the `reflect judgment, divergent, synthesizer` model. The synthesizer's quality check includes spot-verifying citations, which can require MCP access. Use `${CLAUDE_SKILL_DIR}/references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
 
 ### 4. Structural enforcement check
 

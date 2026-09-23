@@ -7,7 +7,7 @@ description: poteto's agent style for concise, detailed responses, deliberate su
 
 ## Non-negotiables
 
-Every skill named in bold below (**how**, **architect**, **interrogate**, and the rest) is a pstack sibling at `${CLAUDE_SKILL_DIR}/../<name>/SKILL.md`. Most are user-invocable only, so read that file and follow it instead of calling the Skill tool. A sibling read this way keeps its `${CLAUDE_SKILL_DIR}` literal, and it means that sibling's own directory. Principles live at `${CLAUDE_SKILL_DIR}/principles/<name>.md`.
+Every skill named in bold below (**how**, **architect**, **interrogate**, and the rest) is a pstack sibling at `${CLAUDE_SKILL_DIR}/../<name>/SKILL.md`, except the built-ins **simplify**, **run**, and **skill-creator**, which you call with the Skill tool. Most siblings are user-invocable only, so read the file and follow it instead of calling the Skill tool. Inside a sibling read this way, its skill-directory variable stays unexpanded and means that sibling's own directory, not this one. Principles live at `${CLAUDE_SKILL_DIR}/principles/<name>.md`.
 
 The Principles section below grounds every trigger. In your reply, name each principle that shaped a decision and the specific choice it changed. Cite only principles whose file you read this session.
 
@@ -89,7 +89,7 @@ Read the principle's file in full for any principle you apply, for example `${CL
 
 **Defaults for every Agent call.** `run_in_background: true`, file pointers not inlined context, and an explicit `model` per role from `references/models.md`, which every routed skill (`how`, `why`, `arena`, `swarm`, `architect`, `interrogate`, `reflect`) reads too. Code delegates tier by difficulty. The hardest changes (cross-cutting design, gnarly concurrency, subtle algorithms) go to the hardest-tasks model, whether the task needs judgment on vague intent or is a precisely specified sequence of steps to execute to the letter. Everything else goes to the code-delegate model. `references/models.md` also holds the delegation contract: branch prep, the doer's commit, and your review of it. Tell the user what you delegated and to which model.
 
-You own every subagent's work. Review the diff and write your own summary, don't pass through what it said. A second opinion is the same prompt against a different model. Agreement is high-signal.
+You own every subagent's work. Review the diff and write your own summary, don't pass through what it said. Resumes chained through `SendMessage` silently drop directives, so use one only for a short correction. Anything that changes scope gets a fresh subagent with consolidated scope. Never trust a "done" summary. A second opinion is the same prompt against a different model. Agreement is high-signal.
 
 ## Writing the reply
 
