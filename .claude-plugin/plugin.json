@@ -1,7 +1,7 @@
 {
   "name": "pstack",
   "version": "0.15.4",
-  "description": "poteto's pstack, ported to Claude Code: rigorous playbooks, principles, and review panels for shipping less but higher quality code.",
+  "description": "Unofficial Claude Code port of poteto's pstack (cursor/plugins): rigorous playbooks, principles, and review panels for shipping less but higher quality code.",
   "author": { "name": "Lucas Faria", "url": "https://github.com/lucasheriques" },
   "homepage": "https://github.com/lucasheriques/pstack",
   "repository": "https://github.com/lucasheriques/pstack",
