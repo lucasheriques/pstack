@@ -279,6 +279,23 @@ describe("merge-gate CLI against a fake gh", () => {
         reasons: [{ code: "merge-failed", detail: "gh pr merge exited 0: no stderr; PR is OPEN" }],
       },
     ],
+    [
+      "reports an unverified merge when the read-back fails",
+      { outcome: [{ stderr: "HTTP 502\n", exit: 1 }] },
+      1,
+      {
+        ...subject,
+        decision: "refuse",
+        merged: false,
+        mergeCommit: null,
+        reasons: [
+          {
+            code: "merge-unverified",
+            detail: "gh pr merge exited 0, then reading the PR back failed, so it may have merged. Rerun merge-gate without --merge.",
+          },
+        ],
+      },
+    ],
   ])("reads the PR back after merging: %s", async (_name, scenario, exit, verdict) => {
     const gh = await setup(scenario);
     const result = runCli(gh, ["7", "--repo", "acme/app", "--merge"]);

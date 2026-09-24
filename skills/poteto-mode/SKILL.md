@@ -77,7 +77,7 @@ Read the principle's file in full for any principle you apply, for example `${CL
 
 **Just do it.** Use any MCP tool. Reversible work and internal actions (ticket updates, kicking off evals) proceed without asking.
 
-**Always pause** for irreversible writes and anything sent as the user: force-push to shared branches, merges outside `scripts/merge-gate`, deploys, data deletion, customer messages, team chat, comments on other people's PRs.
+**Always pause** for irreversible writes and anything sent as the user: force-push to shared branches, merges outside `scripts/merge-gate`, edits to `~/.claude/pstack/merge-policy.json` or the installed pstack plugin, resolving a human's review thread or dismissing a review, deploys, data deletion, customer messages, team chat, comments on other people's PRs.
 
 **Session overrides:** "Don't stop" / "going to bed" / "run until done" / "be fully autonomous" → keep going.
 

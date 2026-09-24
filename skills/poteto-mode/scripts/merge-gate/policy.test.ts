@@ -63,6 +63,8 @@ describe("parsePolicy", () => {
     ["an unknown defaults key", { ...valid, defaults: { humanOnly: [], mergeCommitBranches: [] } }],
     ["a misspelled repo key", { ...valid, repos: { "acme/app": { requireHumanAprovalOnHead: true } } }],
     ["a non-boolean approval flag", { ...valid, repos: { "acme/app": { requireHumanApprovalOnHead: "yes" } } }],
+    ["a null approval flag", { ...valid, repos: { "acme/app": { requireHumanApprovalOnHead: null } } }],
+    ["a null glob list", { ...valid, repos: { "acme/app": { humanOnly: null } } }],
     ["a non-object repo entry", { ...valid, repos: { "acme/app": true } }],
     ["a repo key without an owner", { ...valid, repos: { app: {} } }],
     ["a wildcard owner", { ...valid, repos: { "*/*": {} } }],

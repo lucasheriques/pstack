@@ -14,7 +14,8 @@ import type {
 /** What GitHub reports after `gh pr merge`, whatever the command's exit code said. */
 export type MergeResult =
   | { readonly kind: "merged"; readonly commit: string | null }
-  | { readonly kind: "failed"; readonly detail: string };
+  | { readonly kind: "failed"; readonly detail: string }
+  | { readonly kind: "unverified"; readonly detail: string };
 
 export interface GateGitHub {
   originRepo(): Promise<W.Repository | null>;
@@ -289,10 +290,20 @@ export class GhGateGitHub implements GateGitHub {
       head,
       method === "merge" ? "--merge" : "--squash",
     ]);
-    const after = record(repository(await graphql(OUTCOME_QUERY, pr)).pullRequest, "pullRequest");
-    const state = text(after.state, "state");
-    if (state === "MERGED" && optionalText(after.mergedAt, "mergedAt") !== null)
-      return { kind: "merged", commit: oid(after.mergeCommit, "mergeCommit") };
+    let state: string;
+    let merged: MergeResult | null = null;
+    try {
+      const after = record(repository(await graphql(OUTCOME_QUERY, pr)).pullRequest, "pullRequest");
+      state = text(after.state, "state");
+      if (state === "MERGED" && optionalText(after.mergedAt, "mergedAt") !== null)
+        merged = { kind: "merged", commit: oid(after.mergeCommit, "mergeCommit") };
+    } catch {
+      return {
+        kind: "unverified",
+        detail: `gh pr merge exited ${result.code}, then reading the PR back failed, so it may have merged. Rerun merge-gate without --merge.`,
+      };
+    }
+    if (merged !== null) return merged;
     return {
       kind: "failed",
       detail: `gh pr merge exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}; PR is ${state}`,

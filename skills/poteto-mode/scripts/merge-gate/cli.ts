@@ -134,7 +134,7 @@ async function evaluate(request: Request, runtime: Runtime): Promise<Verdict> {
     const merge = await github.merge(facts.pr, facts.head, decision.method);
     return merge.kind === "merged"
       ? { ...subject, decision: "merge", merged: true, mergeCommit: merge.commit, reasons: [] }
-      : refuse(subject, "merge-failed", merge.detail);
+      : refuse(subject, merge.kind === "unverified" ? "merge-unverified" : "merge-failed", merge.detail);
   } catch (error) {
     if (error instanceof PolicyError) return refuse(subject, "policy-invalid", error.message);
     if (error instanceof GitHubError || error instanceof WatcherQueryError)
@@ -145,7 +145,7 @@ async function evaluate(request: Request, runtime: Runtime): Promise<Verdict> {
 
 function exitCode(verdict: Verdict): number {
   if (verdict.decision === "merge") return 0;
-  return verdict.reasons.some((reason) => reason.code === "internal-error") ? 1 : 2;
+  return verdict.reasons.some((reason) => reason.code === "internal-error" || reason.code === "merge-unverified") ? 1 : 2;
 }
 
 export async function main(

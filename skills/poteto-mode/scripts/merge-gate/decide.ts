@@ -23,6 +23,7 @@ export type ReasonCode =
   | "policy-invalid"
   | "github-error"
   | "merge-failed"
+  | "merge-unverified"
   | "internal-error";
 
 export interface Reason {

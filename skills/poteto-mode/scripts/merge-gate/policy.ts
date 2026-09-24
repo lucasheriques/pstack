@@ -56,14 +56,15 @@ function repoEntry(value: unknown, path: string): RepoPolicy {
     "requireHumanApprovalOnHead",
     "mergeCommitBranches",
   ]);
-  const requireHuman = entry.requireHumanApprovalOnHead ?? false;
+  const requireHuman =
+    entry.requireHumanApprovalOnHead === undefined ? false : entry.requireHumanApprovalOnHead;
   if (typeof requireHuman !== "boolean")
     throw new PolicyError(`${path}.requireHumanApprovalOnHead must be a boolean`);
   return {
-    humanOnly: globs(entry.humanOnly ?? [], `${path}.humanOnly`),
+    humanOnly: globs(entry.humanOnly === undefined ? [] : entry.humanOnly, `${path}.humanOnly`),
     requireHumanApprovalOnHead: requireHuman,
     mergeCommitBranches: globs(
-      entry.mergeCommitBranches ?? [],
+      entry.mergeCommitBranches === undefined ? [] : entry.mergeCommitBranches,
       `${path}.mergeCommitBranches`
     ),
   };
