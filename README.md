@@ -11,6 +11,8 @@ claude plugin marketplace add lucasheriques/pstack
 claude plugin install pstack@pstack
 ```
 
+To update, run `claude plugin marketplace update pstack`, then `claude plugin update pstack@pstack`. The plugin has no version number on purpose, so every commit to `main` counts as a new release.
+
 ## Use
 
 `poteto-mode` is the entry point. It switches on by itself for engineering work that matches a playbook or needs rigor, or you can call it with `/pstack:poteto-mode <task>`. It matches the task to one of its playbooks (bug fix, feature, refactoring, perf, investigation, babysit, shipping, multi-phase plan, autonomous run, and more), copies the steps into a todo list, and routes to the other skills as the steps need them.

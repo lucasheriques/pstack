@@ -38,6 +38,8 @@ const rules: Rule[] = [
   { name: "cursor-cloud-agent", pattern: /\bcloud[- ]agents?\b/i },
   { name: "cursor-frontmatter", pattern: /^(mode|reminder|icon|color): /m },
   { name: "cursor-builtin-skill", pattern: /\bcreate-skill\b|\bsetup-pstack\b|\bmake-bot-ui\b/ },
+  // Without a version, Claude Code versions installs by commit SHA, so every merge reaches them.
+  { name: "plugin-version", pattern: /"version"\s*:/, exemptPaths: /^(?!\.claude-plugin\/)/ },
   { name: "cursor-bugbot", pattern: /\bbugbot\b(?!-triage)/i, exemptPaths: /\.ts$/ },
 ];
 
