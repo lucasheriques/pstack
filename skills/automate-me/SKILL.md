@@ -80,7 +80,7 @@ Show the draft to the user and take feedback. Expect multiple iterations. Cut ru
 
 ### 6. Land it
 
-Write it to its path. When that directory is under version control, commit on a branch in a worktree off main and open a draft PR. Don't push to main directly.
+Write it to its path. When that directory is under version control, commit on a branch in a worktree off main and open a PR. Don't push to main directly.
 
 ## Guardrails
 

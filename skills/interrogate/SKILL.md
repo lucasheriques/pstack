@@ -7,7 +7,7 @@ description: "Use for \"interrogate\", \"adversarial review\", \"multi-model rev
 
 Spawn one reviewer per configured model to adversarially review code changes. Each model gets the same prompt and rubric. The adversarial signal comes from model diversity, not assigned personas.
 
-The deliverable is a synthesized verdict. Do NOT auto-apply changes.
+The deliverable is a synthesized verdict. Do NOT auto-apply changes, except as the pre-PR gate: then apply every Act on finding yourself, dismiss the rest with a reason, and continue with poteto-mode's Opening a PR instead of stopping at the verdict.
 
 ## Step 1, Determine Scope
 
