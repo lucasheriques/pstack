@@ -11,7 +11,7 @@ claude plugin marketplace add lucasheriques/pstack
 claude plugin install pstack@pstack
 ```
 
-To update, run `claude plugin marketplace update pstack`, then `claude plugin update pstack@pstack`. The plugin has no version number on purpose, so every commit to `main` counts as a new release.
+To update, run `claude plugin marketplace update pstack`, then `claude plugin update pstack@pstack`. The plugin has no version number on purpose, so every commit to `main` counts as a new release (see `translation.md`).
 
 ## Use
 
