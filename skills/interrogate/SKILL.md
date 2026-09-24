@@ -7,7 +7,7 @@ description: "Use for \"interrogate\", \"adversarial review\", \"multi-model rev
 
 Spawn one reviewer per configured model to adversarially review code changes. Each model gets the same prompt and rubric. The adversarial signal comes from model diversity, not assigned personas.
 
-The deliverable is a synthesized verdict. Do NOT auto-apply changes. When poteto-mode's Opening a PR runs this skill as its gate, hand the verdict back to that step instead of ending the turn.
+The deliverable is a synthesized verdict. Do NOT auto-apply changes. When a poteto-mode playbook runs this skill as its pre-PR gate, hand the verdict back to it instead of ending the turn. The gate's rules are Opening a PR step 2.
 
 ## Step 1, Determine Scope
 

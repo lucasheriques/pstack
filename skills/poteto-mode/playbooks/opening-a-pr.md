@@ -24,16 +24,16 @@ After these sections, attach videos or screenshots when they prove a claim. Do n
 
 **Forge.** GitHub CLI (`gh`) for create, edit, view, watch, and merge. Do not require Graphite (`gt`).
 
-**Size and stacks.** Prefer five narrow PRs to one large PR. Stacks use GitHub's native stacked PRs through the `gh stack` extension: `gh stack init`, then `gh stack add` per layer, `gh stack submit --auto --open` to open the PRs ready, and `gh stack sync` or `gh stack rebase` to restack. Raw `git rebase` or force-push on a stacked branch breaks GitHub's stack tracking, so fall back to raw git only when `gh stack` has no equivalent. Branch from trunk only for independent work. Sync with trunk before substantial stack work. Merging a bottom PR restacks the rest server-side.
+**Size and stacks.** Prefer five narrow PRs to one large PR. Stacks use GitHub's native stacked PRs through the `gh stack` extension: `gh stack init`, then `gh stack add` per layer, `gh stack submit --auto` to open the PRs, and `gh stack sync` or `gh stack rebase` to restack. Raw `git rebase` or force-push on a stacked branch breaks GitHub's stack tracking, so fall back to raw git only when `gh stack` has no equivalent. Branch from trunk only for independent work. Sync with trunk before substantial stack work. Merging a bottom PR restacks the rest server-side.
 
-**Readiness.** A draft is fine while the work is in progress, and cheaper where CI runs only fast checks on drafts. A finished PR is ready. Once the change is verified, run the gate, then open the PR ready or `gh pr ready` the draft yourself, in the same turn. A ready PR is what starts the reviewers and billed CI, and marking it ready is pre-authorized. Never hand it back to the user or end a turn with a finished PR still in draft. Merging and deploying are the user's. Run `gh pr view <number>` before you refer to PR status.
+**Readiness.** A draft is fine while the work is in progress, and cheaper where CI runs only fast checks on drafts. A PR whose gate is clean is finished, and a finished PR is ready. Readying it is pre-authorized, so never hand it back to the user. Merging and deploying are the user's. Run `gh pr view <number>` before you refer to PR status.
 
-**Steps.**
+**Steps.** Every playbook's pre-PR gate is step 2.
 
 1. `/simplify` over the diff, then `/no-comments`. Commit and push.
-2. The **interrogate** skill against trunk as the gate. Apply each Act on finding that stays inside the PR's diff and intent. Route the rest (out of scope, API-changing, or destructive) to a follow-up PR or task instead. Carry Consider findings to the reply. Clean means no Act on finding left unapplied or unrouted. Rerun the reviewers once, only when an applied fix was non-trivial. If Act on findings remain after that, stop and report them.
-3. `gh pr create` without `--draft`, `gh stack submit --auto --open` for a stack, or `gh pr ready` for an existing draft.
-4. Reply with the PR URL and what the gate found, fixed, and dismissed.
+2. Gate. Run the **interrogate** skill against trunk. Apply each Act on finding that fits the PR's intent without changing a public API or deleting data. An Act on finding you won't fix here is a blocker, unless the lead re-buckets it to Consider or Dismissed with a reason. Commit the fixes after `/simplify` over them, and push. When a fix changed behavior beyond the lines its finding cited, run the gate once more on the new head and apply its findings the same way. Never run a third round.
+3. No blockers: `gh pr create` without `--draft`, or `gh pr ready <number>` for your own draft. In a stack, ready only your own PR. `gh stack submit --auto --open` is for one agent that gated every PR in the stack, followed by `gh pr edit` for each title and body. With blockers: the PR stays or opens as a draft.
+4. Reply with the PR URL, what the gate found, fixed, and dismissed, the Consider findings, and any blocker.
 
 **Babysit.** Opening a PR does not start a babysit. Post the URL and keep building. Finish the phase or stack first. Run a separate babysit pass only when the user asks for one after the whole stack exists. A babysit for each new PR stalls the build and spends checks on commits that later waves restart. Push back when feedback drifts from intent.
 
