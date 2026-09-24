@@ -46,8 +46,6 @@ Read `${CLAUDE_SKILL_DIR}/references/reviewer-prompt.md` and fill in the templat
 4. The code-quality lens from `${CLAUDE_SKILL_DIR}/references/code-quality-review.md`
 5. The blind-spot lenses from `${CLAUDE_SKILL_DIR}/references/blind-spots.md` that the diff calls for, or "none"
 
-If CodeScene MCP tools are available (ToolSearch `codescene`), run `analyze_change_set` against the base yourself while the reviewers work. Treat each located code-health regression as one more reviewer finding. Without the tools, skip this silently.
-
 The same filled template goes to all reviewers, so every model applies the code-quality lens.
 
 ## Step 4, Synthesize
