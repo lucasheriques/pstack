@@ -1,13 +1,13 @@
 ---
 name: interrogate
-description: "Use for \"interrogate\", \"adversarial review\", \"multi-model review\", \"challenge this\", \"stress test this code\", \"find blind spots\", \"tear this apart\", reviewing someone else's PR, and as the pre-PR gate before marking a PR ready. Multiple LLM reviewers challenge changes from independent angles."
+description: "Use for \"interrogate\", \"adversarial review\", \"multi-model review\", \"challenge this\", \"stress test this code\", \"find blind spots\", \"tear this apart\", reviewing someone else's PR, and as the pre-PR gate before opening or readying a PR. Multiple LLM reviewers challenge changes from independent angles."
 ---
 
 # Interrogate
 
 Spawn one reviewer per configured model to adversarially review code changes. Each model gets the same prompt and rubric. The adversarial signal comes from model diversity, not assigned personas.
 
-The deliverable is a synthesized verdict. Do NOT auto-apply changes.
+The deliverable is a synthesized verdict. Do NOT auto-apply changes. When a poteto-mode playbook runs this skill as its pre-PR gate, hand the verdict back to it instead of ending the turn. The gate's rules are Opening a PR step 2.
 
 ## Step 1, Determine Scope
 

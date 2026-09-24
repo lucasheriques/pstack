@@ -55,7 +55,7 @@ The 23 principles live in `skills/poteto-mode/principles/`. poteto-mode reads th
 
 - **Claude models only.** Roles map to `sonnet`, `opus`, and `fable` in [`skills/poteto-mode/references/models.md`](skills/poteto-mode/references/models.md). Edit that file to change a role. It replaces `/setup-pstack`.
 - **Harness.** `Task` becomes the Agent tool, `readonly` becomes the `pstack:read-only` agent, `/deslop` becomes `/simplify`, `control-ui` and `control-cli` become `claude-in-chrome` and the `run` skill, and the Origin forge is gone in favor of `gh` and `gh stack`.
-- **My house rules.** A few defaults follow my own workflow instead of poteto's: draft PRs first, with `interrogate` as the gate before marking ready. Merging stays with the human. Comment cleanup never touches pre-existing comments.
+- **My house rules.** A few defaults follow my own workflow instead of poteto's: `interrogate` gates every PR, and agents ready their own PRs instead of handing that back. Merging stays with the human. Comment cleanup never touches pre-existing comments.
 - **Not shipped.** benny, make-bot-ui, setup-pstack, and the guide. They depend on Cursor.
 
 The full mapping is in [`.claude/skills/sync-upstream/references/translation.md`](.claude/skills/sync-upstream/references/translation.md).
