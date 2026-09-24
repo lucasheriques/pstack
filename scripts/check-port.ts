@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// Flags Cursor-isms that the Claude Code port must translate. Run after every
-// upstream merge: each finding is a line that still assumes Cursor's harness.
+// Flags Cursor-isms the Claude Code port must translate, plus the port's own
+// invariants (see translation.md). Run before every commit and after every upstream merge.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -17,6 +17,7 @@ type Rule = {
   name: string;
   pattern: RegExp;
   exemptPaths?: RegExp;
+  paths?: RegExp;
 };
 
 const rules: Rule[] = [
@@ -38,6 +39,7 @@ const rules: Rule[] = [
   { name: "cursor-cloud-agent", pattern: /\bcloud[- ]agents?\b/i },
   { name: "cursor-frontmatter", pattern: /^(mode|reminder|icon|color): /m },
   { name: "cursor-builtin-skill", pattern: /\bcreate-skill\b|\bsetup-pstack\b|\bmake-bot-ui\b/ },
+  { name: "plugin-version", pattern: /"version"\s*:/, paths: /^\.claude-plugin\// },
   { name: "cursor-bugbot", pattern: /\bbugbot\b(?!-triage)/i, exemptPaths: /\.ts$/ },
 ];
 
@@ -70,7 +72,7 @@ export function findingsFor(path: string, text: string): Finding[] {
   if (exemptFiles.test(path)) return [];
   return text.split("\n").flatMap((lineText, index) => {
     const ruleHits = rules
-      .filter((rule) => !rule.exemptPaths?.test(path) && rule.pattern.test(lineText))
+      .filter((rule) => (rule.paths?.test(path) ?? true) && !rule.exemptPaths?.test(path) && rule.pattern.test(lineText))
       .map((rule) => rule.name);
     const referenceHits = [
       ...unresolvedPrinciples(lineText).map(() => "unresolved-principle"),

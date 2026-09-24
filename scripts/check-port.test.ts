@@ -27,6 +27,8 @@ describe("findingsFor", () => {
     ["skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/references/missing.md`.", "unresolved-skill-path"],
     ["skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/../nope/SKILL.md`.", "unresolved-skill-path"],
     ["skills/x/SKILL.md", 'Spawn `subagent_type: "pstack:no-such-agent"`.', "unresolved-pstack-name"],
+    [".claude-plugin/plugin.json", '  "version": "0.15.4",', "plugin-version"],
+    [".claude-plugin/marketplace.json", '      "version": "1.0.0",', "plugin-version"],
   ])("%s flags %p as %s", (path, line, rule) => {
     expect(findingsFor(path, line).map((f) => f.rule)).toContain(rule);
   });
@@ -44,6 +46,7 @@ describe("findingsFor", () => {
     ["a pstack agent", "skills/x/SKILL.md", 'Use `subagent_type: "pstack:read-only"`.'],
     ["a pstack skill", "README.md", "Run /pstack:poteto-mode."],
     ["a pstack skill in prose", "skills/x/SKILL.md", "Route through `pstack:poteto-mode`."],
+    ["a version field elsewhere", "skills/poteto-mode/scripts/package.json", '  "version": "1.0.0",'],
   ])("allows %s", (_, path, line) => {
     expect(findingsFor(path, line)).toEqual([]);
   });
