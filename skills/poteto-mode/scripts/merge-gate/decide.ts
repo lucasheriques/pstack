@@ -15,6 +15,7 @@ export type ReasonCode =
   | "checks-missing"
   | "threads-unresolved"
   | "threads-unverified"
+  | "reviews-unverified"
   | "head-moved"
   | "files-incomplete"
   | "needs-human-approval"
@@ -75,6 +76,7 @@ export interface PrFacts {
   readonly author: Actor | null;
   readonly reviews: readonly Review[];
   readonly reviewThreadCount: number;
+  readonly reviewCount: number;
   readonly changedFileCount: number;
   readonly files: readonly ChangedFile[];
   readonly readiness: Readiness;
@@ -88,6 +90,8 @@ export type Decision =
 
 /** watch-pr reads the first 100 review threads and does not paginate. */
 export const THREAD_PAGE_SIZE = 100;
+/** The gate's own query reads the last 100 reviews. */
+export const REVIEW_PAGE_SIZE = 100;
 const MERGEABLE_STATES: ReadonlySet<W.MergeStateStatus> = new Set([
   "CLEAN",
   "HAS_HOOKS",
@@ -187,6 +191,13 @@ function pullRequestReasons(
       reason(
         "threads-unverified",
         `${facts.reviewThreadCount} review threads exceed the ${THREAD_PAGE_SIZE} that can be checked`
+      )
+    );
+  if (facts.reviewCount > REVIEW_PAGE_SIZE)
+    reasons.push(
+      reason(
+        "reviews-unverified",
+        `${facts.reviewCount} reviews exceed the ${REVIEW_PAGE_SIZE} that can be checked for requested changes`
       )
     );
   if (pr.headRefOid !== facts.head)

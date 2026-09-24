@@ -81,7 +81,7 @@ function rules(scenario: Scenario = {}): readonly FakeRule[] {
                   changedFiles: 1,
                   author: { __typename: "User", login: "agent" },
                   reviewThreads: { totalCount: 0 },
-                  reviews: { nodes: [] },
+                  reviews: { totalCount: 0, nodes: [] },
                 },
               },
             },

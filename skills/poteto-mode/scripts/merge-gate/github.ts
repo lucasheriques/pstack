@@ -44,6 +44,7 @@ query MergeGatePr($owner: String!, $repo: String!, $pr: Int!) {
       author { __typename login }
       reviewThreads { totalCount }
       reviews(last: 100) {
+        totalCount
         nodes {
           state
           authorAssociation
@@ -201,6 +202,7 @@ export function parsePullRequest(
         : text(record(repo.defaultBranchRef, "defaultBranchRef").name, "defaultBranchRef.name"),
     author: actor(pr.author, "author"),
     reviews: list(record(pr.reviews, "reviews").nodes, "reviews.nodes").map(parseReview),
+    reviewCount: count(record(pr.reviews, "reviews").totalCount, "reviews.totalCount"),
     reviewThreadCount: count(
       record(pr.reviewThreads, "reviewThreads").totalCount,
       "reviewThreads.totalCount"
