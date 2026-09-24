@@ -24,17 +24,17 @@ After these sections, attach videos or screenshots when they prove a claim. Do n
 
 **Forge.** GitHub CLI (`gh`) for create, edit, view, watch, and merge. Do not require Graphite (`gt`).
 
-**Size and stacks.** Prefer five narrow PRs to one large PR. Stacks use GitHub's native stacked PRs through the `gh stack` extension: `gh stack init`, then `gh stack add` per layer, `gh stack submit --auto` to open the PRs, and `gh stack sync` or `gh stack rebase` to restack. Raw `git rebase` or force-push on a stacked branch breaks GitHub's stack tracking, so fall back to raw git only when `gh stack` has no equivalent. Branch from trunk only for independent work. Sync with trunk before substantial stack work. Merging a bottom PR restacks the rest server-side.
+**Size and stacks.** Prefer five narrow PRs to one large PR. Stacks use GitHub's native stacked PRs through the `gh stack` extension: `gh stack init`, then `gh stack add` per layer, `gh stack submit --auto --open` to open the PRs ready, and `gh stack sync` or `gh stack rebase` to restack. Raw `git rebase` or force-push on a stacked branch breaks GitHub's stack tracking, so fall back to raw git only when `gh stack` has no equivalent. Branch from trunk only for independent work. Sync with trunk before substantial stack work. Merging a bottom PR restacks the rest server-side.
 
-**Readiness.** Gate first, then open every PR ready, never as a draft. The gate is the **interrogate** skill on the branch against trunk: apply every Act on finding, dismiss the rest with a reason, and rerun until clean. Then `gh pr create` without `--draft`. `gh stack submit --auto` opens drafts, so run `gh pr ready <number>` on each right after. A ready PR is what starts CI and the review bots, so do it yourself in the same turn. Never hand it back to the user. Merging and deploying are the user's. Run `gh pr view <number>` before you refer to PR status.
+**Readiness.** A draft is fine while the work is in progress, and cheaper where CI runs only fast checks on drafts. A finished PR is ready. Once the change is verified, run the gate, then open the PR ready or `gh pr ready` the draft yourself, in the same turn. A ready PR is what starts the reviewers and billed CI, and marking it ready is pre-authorized. Never hand it back to the user or end a turn with a finished PR still in draft. Merging and deploying are the user's. Run `gh pr view <number>` before you refer to PR status.
 
 **Steps.**
 
-1. `/simplify` over the diff, then `/no-comments`.
-2. **interrogate** against trunk until clean.
-3. Open the PR ready, or `gh pr ready` a draft.
+1. `/simplify` over the diff, then `/no-comments`. Commit and push.
+2. The **interrogate** skill against trunk as the gate. Apply each Act on finding that stays inside the PR's diff and intent. Route the rest (out of scope, API-changing, or destructive) to a follow-up PR or task instead. Carry Consider findings to the reply. Clean means no Act on finding left unapplied or unrouted. Rerun the reviewers once, only when an applied fix was non-trivial. If Act on findings remain after that, stop and report them.
+3. `gh pr create` without `--draft`, `gh stack submit --auto --open` for a stack, or `gh pr ready` for an existing draft.
 4. Reply with the PR URL and what the gate found, fixed, and dismissed.
 
 **Babysit.** Opening a PR does not start a babysit. Post the URL and keep building. Finish the phase or stack first. Run a separate babysit pass only when the user asks for one after the whole stack exists. A babysit for each new PR stalls the build and spends checks on commits that later waves restart. Push back when feedback drifts from intent.
 
-A subagent that opens a PR runs `/simplify`, `/no-comments`, and `interrogate`. It returns the URL and does not babysit. Return to the parent.
+A subagent that opens a PR runs these steps too. It returns the URL and does not babysit. Return to the parent.
