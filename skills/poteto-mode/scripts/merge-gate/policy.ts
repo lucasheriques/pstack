@@ -7,8 +7,9 @@ export interface RepoPolicy {
   readonly mergeCommitBranches: readonly string[];
 }
 
-/** Repo entries keyed by lowercased "owner/name" or "owner/*", with defaults.humanOnly already prepended. */
+/** Repo entries keyed by lowercased "owner/name" or "owner/*"; `repoPolicy` combines them with the defaults. */
 export interface Policy {
+  readonly defaultHumanOnly: readonly string[];
   readonly repos: ReadonlyMap<string, RepoPolicy>;
 }
 
@@ -49,11 +50,7 @@ function globs(value: unknown, path: string): readonly string[] {
   return value;
 }
 
-function repoEntry(
-  value: unknown,
-  path: string,
-  defaults: readonly string[]
-): RepoPolicy {
+function repoEntry(value: unknown, path: string): RepoPolicy {
   const entry = object(value, path, [
     "humanOnly",
     "requireHumanApprovalOnHead",
@@ -63,10 +60,7 @@ function repoEntry(
   if (typeof requireHuman !== "boolean")
     throw new PolicyError(`${path}.requireHumanApprovalOnHead must be a boolean`);
   return {
-    humanOnly: [
-      ...defaults,
-      ...globs(entry.humanOnly ?? [], `${path}.humanOnly`),
-    ],
+    humanOnly: globs(entry.humanOnly ?? [], `${path}.humanOnly`),
     requireHumanApprovalOnHead: requireHuman,
     mergeCommitBranches: globs(
       entry.mergeCommitBranches ?? [],
@@ -77,7 +71,7 @@ function repoEntry(
 
 export function parsePolicy(value: unknown): Policy {
   const root = object(value, "policy", ["defaults", "repos"]);
-  const defaults = globs(
+  const defaultHumanOnly = globs(
     object(root.defaults, "defaults", ["humanOnly"]).humanOnly,
     "defaults.humanOnly"
   );
@@ -88,9 +82,9 @@ export function parsePolicy(value: unknown): Policy {
     const normalized = key.toLowerCase();
     if (repos.has(normalized))
       throw new PolicyError(`repos key "${key}" duplicates another key ignoring case`);
-    repos.set(normalized, repoEntry(entry, `repos["${key}"]`, defaults));
+    repos.set(normalized, repoEntry(entry, `repos["${key}"]`));
   }
-  return { repos };
+  return { defaultHumanOnly, repos };
 }
 
 export async function loadPolicy(path: string): Promise<Policy> {
@@ -108,12 +102,20 @@ export async function loadPolicy(path: string): Promise<Policy> {
   }
 }
 
-/** GitHub names are case-insensitive, so lookup is too. An exact key wins over "owner/*". */
+/**
+ * GitHub names are case-insensitive, so lookup is too. An exact key adds to a
+ * matching "owner/*" rather than replacing it, so it can never loosen it.
+ */
 export function repoPolicy(policy: Policy, repo: Repository): RepoPolicy | null {
   const owner = repo.owner.toLowerCase();
-  return (
-    policy.repos.get(`${owner}/${repo.repo.toLowerCase()}`) ??
-    policy.repos.get(`${owner}/*`) ??
-    null
+  const entries = [`${owner}/*`, `${owner}/${repo.repo.toLowerCase()}`].flatMap(
+    (key) => policy.repos.get(key) ?? []
   );
+  if (entries.length === 0) return null;
+  const union = (lists: readonly (readonly string[])[]) => [...new Set(lists.flat())];
+  return {
+    humanOnly: union([policy.defaultHumanOnly, ...entries.map((entry) => entry.humanOnly)]),
+    requireHumanApprovalOnHead: entries.some((entry) => entry.requireHumanApprovalOnHead),
+    mergeCommitBranches: union(entries.map((entry) => entry.mergeCommitBranches)),
+  };
 }

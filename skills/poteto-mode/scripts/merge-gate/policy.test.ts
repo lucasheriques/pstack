@@ -1,37 +1,54 @@
 import { describe, expect, it } from "bun:test";
-import { PolicyError, parsePolicy, repoPolicy } from "./policy.ts";
+import { PolicyError, type RepoPolicy, parsePolicy, repoPolicy } from "./policy.ts";
 
 const valid = {
   defaults: { humanOnly: [".github/**"] },
   repos: {
     "acme/app": {
-      humanOnly: ["billing/**"],
-      requireHumanApprovalOnHead: true,
+      humanOnly: ["billing/**", ".github/**"],
       mergeCommitBranches: ["sync/*"],
     },
-    "acme/*": {},
+    "acme/*": {
+      humanOnly: ["infra/**"],
+      requireHumanApprovalOnHead: true,
+      mergeCommitBranches: ["release/*"],
+    },
+    "solo/app": { requireHumanApprovalOnHead: true },
+    "loose/*": {},
   },
 };
 
 describe("parsePolicy", () => {
-  it("resolves an exact key with defaults prepended", () => {
-    expect(
-      repoPolicy(parsePolicy(valid), { owner: "Acme", repo: "App" })
-    ).toEqual({
-      humanOnly: [".github/**", "billing/**"],
-      requireHumanApprovalOnHead: true,
-      mergeCommitBranches: ["sync/*"],
-    });
-  });
-
-  it("falls back to the owner wildcard, then to nothing", () => {
-    const policy = parsePolicy(valid);
-    expect(repoPolicy(policy, { owner: "acme", repo: "site" })).toEqual({
-      humanOnly: [".github/**"],
-      requireHumanApprovalOnHead: false,
-      mergeCommitBranches: [],
-    });
-    expect(repoPolicy(policy, { owner: "other", repo: "app" })).toBeNull();
+  it.each<[string, RepoPolicy | null]>([
+    [
+      "Acme/App",
+      {
+        humanOnly: [".github/**", "infra/**", "billing/**"],
+        requireHumanApprovalOnHead: true,
+        mergeCommitBranches: ["release/*", "sync/*"],
+      },
+    ],
+    [
+      "acme/site",
+      {
+        humanOnly: [".github/**", "infra/**"],
+        requireHumanApprovalOnHead: true,
+        mergeCommitBranches: ["release/*"],
+      },
+    ],
+    [
+      "solo/app",
+      { humanOnly: [".github/**"], requireHumanApprovalOnHead: true, mergeCommitBranches: [] },
+    ],
+    [
+      "loose/app",
+      { humanOnly: [".github/**"], requireHumanApprovalOnHead: false, mergeCommitBranches: [] },
+    ],
+    ["solo/other", null],
+    ["other/app", null],
+  ])("resolves %s from defaults, the owner wildcard and the exact key", (slug, expected) => {
+    const [owner, repo] = slug.split("/");
+    expect(repoPolicy(parsePolicy(valid), { owner, repo })).toEqual(expected);
   });
 
   it.each<[string, unknown]>([

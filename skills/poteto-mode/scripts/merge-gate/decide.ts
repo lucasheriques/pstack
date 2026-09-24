@@ -7,6 +7,7 @@ export type ReasonCode =
   | "not-open"
   | "draft"
   | "not-author"
+  | "base-not-trunk"
   | "not-mergeable"
   | "changes-requested"
   | "checks-failed"
@@ -68,6 +69,9 @@ export interface PrFacts {
   readonly pr: W.PrContext;
   /** Head read alongside `reviews`; `readiness.facts.headRefOid` is a second, later read. */
   readonly head: string;
+  /** The PR's base branch and the repo's default branch; null when GitHub reports none. */
+  readonly base: string | null;
+  readonly defaultBranch: string | null;
   readonly author: Actor | null;
   readonly reviews: readonly Review[];
   readonly reviewThreadCount: number;
@@ -93,6 +97,7 @@ const WRITE_ACCESS: ReadonlySet<string> = new Set([
   "MEMBER",
   "COLLABORATOR",
 ]);
+type Stance = Review & { readonly author: Actor };
 const STANCES: ReadonlySet<ReviewState> = new Set([
   "APPROVED",
   "CHANGES_REQUESTED",
@@ -110,6 +115,7 @@ const reason = (code: ReasonCode, detail: string): Reason => ({ code, detail });
 
 export function decide(policy: Policy, facts: PrFacts, viewer: string): Decision {
   const repo = repoPolicy(policy, facts.pr);
+  const stances = latestStances(facts.reviews);
   if (repo === null)
     return {
       kind: "refuse",
@@ -118,12 +124,12 @@ export function decide(policy: Policy, facts: PrFacts, viewer: string): Decision
           "repo-not-allowed",
           `${facts.pr.owner}/${facts.pr.repo} matches no repos entry in the merge policy`
         ),
-        ...pullRequestReasons(facts, viewer),
+        ...pullRequestReasons(facts, viewer, stances),
       ],
     };
   const reasons = nonEmpty([
-    ...pullRequestReasons(facts, viewer),
-    ...approvalReasons(repo, facts),
+    ...pullRequestReasons(facts, viewer, stances),
+    ...approvalReasons(repo, facts, stances),
   ]);
   if (reasons !== null) return { kind: "refuse", reasons };
   const branch = facts.readiness.facts.headRefName;
@@ -135,7 +141,22 @@ export function decide(policy: Policy, facts: PrFacts, viewer: string): Decision
   };
 }
 
-function pullRequestReasons(facts: PrFacts, viewer: string): Reason[] {
+// GitHub lists reviews oldest first, so the last stance per reviewer is their
+// current one: an approval later dismissed or followed by a change request no
+// longer counts, and a change request later approved or dismissed is lifted.
+function latestStances(reviews: readonly Review[]): readonly Stance[] {
+  const stances = new Map<string, Stance>();
+  for (const review of reviews)
+    if (review.author !== null && STANCES.has(review.state))
+      stances.set(review.author.login, { ...review, author: review.author });
+  return [...stances.values()];
+}
+
+function pullRequestReasons(
+  facts: PrFacts,
+  viewer: string,
+  stances: readonly Stance[]
+): Reason[] {
   const { readiness } = facts;
   const pr = readiness.facts;
   const reasons: Reason[] = [];
@@ -149,6 +170,14 @@ function pullRequestReasons(facts: PrFacts, viewer: string): Reason[] {
         `PR author is ${facts.author?.login ?? "unknown"}, gh is authenticated as ${viewer}`
       )
     );
+  if (facts.base === null || facts.base !== facts.defaultBranch)
+    reasons.push(
+      reason(
+        "base-not-trunk",
+        `base is ${facts.base ?? "unknown"}, the default branch is ${facts.defaultBranch ?? "unknown"}`
+      )
+    );
+  reasons.push(...changesRequestedReasons(pr.reviewDecision, stances));
   if (readiness.kind === "open" || readiness.kind === "no-checks")
     reasons.push(
       ...readinessReasons(pr, readiness.threads, readiness.kind === "open" ? readiness.ci : null)
@@ -180,8 +209,6 @@ function readinessReasons(
         `GitHub reports mergeable=${pr.mergeable}, mergeStateStatus=${pr.mergeStateStatus}`
       )
     );
-  if (pr.reviewDecision === "CHANGES_REQUESTED")
-    reasons.push(reason("changes-requested", "a reviewer requested changes"));
   reasons.push(...checkReasons(ci));
   if (threads.length > 0)
     reasons.push(
@@ -191,6 +218,22 @@ function readinessReasons(
       )
     );
   return reasons;
+}
+
+// reviewDecision is null on repos without required reviews, so each
+// reviewer's own latest stance blocks too, whoever they are.
+function changesRequestedReasons(
+  reviewDecision: W.PullRequestFacts["reviewDecision"],
+  stances: readonly Stance[]
+): Reason[] {
+  const requesters = stances
+    .filter((stance) => stance.state === "CHANGES_REQUESTED")
+    .map((stance) => stance.author.login);
+  if (requesters.length > 0)
+    return [reason("changes-requested", `changes requested by ${requesters.join(", ")}`)];
+  if (reviewDecision === "CHANGES_REQUESTED")
+    return [reason("changes-requested", "GitHub reports reviewDecision CHANGES_REQUESTED")];
+  return [];
 }
 
 function checkReasons(ci: W.CiState | null): Reason[] {
@@ -210,7 +253,11 @@ function checkReasons(ci: W.CiState | null): Reason[] {
   ];
 }
 
-function approvalReasons(repo: RepoPolicy, facts: PrFacts): Reason[] {
+function approvalReasons(
+  repo: RepoPolicy,
+  facts: PrFacts,
+  stances: readonly Stance[]
+): Reason[] {
   const reasons: Reason[] = [];
   if (facts.files.length !== facts.changedFileCount)
     reasons.push(
@@ -231,7 +278,7 @@ function approvalReasons(repo: RepoPolicy, facts: PrFacts): Reason[] {
     ...(repo.requireHumanApprovalOnHead ? ["the policy requires it for this repo"] : []),
     ...(humanOnly.length > 0 ? [`human-only files changed: ${humanOnly.join(", ")}`] : []),
   ];
-  if (because.length > 0 && !humanApprovedHead(facts))
+  if (because.length > 0 && !humanApprovedHead(facts, stances))
     reasons.push(
       reason(
         "needs-human-approval",
@@ -241,15 +288,8 @@ function approvalReasons(repo: RepoPolicy, facts: PrFacts): Reason[] {
   return reasons;
 }
 
-function humanApprovedHead(facts: PrFacts): boolean {
-  // GitHub lists reviews oldest first, so the last stance per reviewer is
-  // their current one: an approval later dismissed or followed by a change
-  // request no longer counts.
-  const stances = new Map<string, Review & { readonly author: Actor }>();
-  for (const review of facts.reviews)
-    if (review.author !== null && STANCES.has(review.state))
-      stances.set(review.author.login, { ...review, author: review.author });
-  return [...stances.values()].some(
+function humanApprovedHead(facts: PrFacts, stances: readonly Stance[]): boolean {
+  return stances.some(
     (review) =>
       review.state === "APPROVED" &&
       review.commit === facts.head &&

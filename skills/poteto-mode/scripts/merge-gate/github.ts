@@ -11,8 +11,9 @@ import type {
   ReviewState,
 } from "./decide.ts";
 
+/** What GitHub reports after `gh pr merge`, whatever the command's exit code said. */
 export type MergeResult =
-  | { readonly kind: "merged" }
+  | { readonly kind: "merged"; readonly commit: string | null }
   | { readonly kind: "failed"; readonly detail: string };
 
 export interface GateGitHub {
@@ -35,8 +36,10 @@ export const PR_QUERY = `
 query MergeGatePr($owner: String!, $repo: String!, $pr: Int!) {
   repository(owner: $owner, name: $repo) {
     nameWithOwner
+    defaultBranchRef { name }
     pullRequest(number: $pr) {
       headRefOid
+      baseRefName
       changedFiles
       author { __typename login }
       reviewThreads { totalCount }
@@ -48,6 +51,17 @@ query MergeGatePr($owner: String!, $repo: String!, $pr: Int!) {
           commit { oid }
         }
       }
+    }
+  }
+}
+`;
+const OUTCOME_QUERY = `
+query MergeGateOutcome($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      state
+      mergedAt
+      mergeCommit { oid }
     }
   }
 }
@@ -85,6 +99,21 @@ async function gh(args: readonly string[]): Promise<CommandResult> {
 
 const firstLine = (text: string): string => (text.trim().split(/\r?\n/, 1)[0] ?? "").slice(0, 240);
 
+function graphql(query: string, pr: W.PrContext): Promise<unknown> {
+  return ghJson([
+    "api",
+    "graphql",
+    "-f",
+    `query=${query}`,
+    "-f",
+    `owner=${pr.owner}`,
+    "-f",
+    `repo=${pr.repo}`,
+    "-F",
+    `pr=${pr.number}`,
+  ]);
+}
+
 async function ghJson(args: readonly string[]): Promise<unknown> {
   const result = await gh(args);
   const command = `gh ${args.slice(0, 2).join(" ")}`;
@@ -114,6 +143,9 @@ function list(value: unknown, path: string): readonly unknown[] {
 function text(value: unknown, path: string): string {
   return typeof value === "string" ? value : invalid(path, value);
 }
+function optionalText(value: unknown, path: string): string | null {
+  return value === null ? null : text(value, path);
+}
 function count(value: unknown, path: string): number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0
     ? value
@@ -138,19 +170,23 @@ function parseReview(value: unknown, index: number): Review {
     author: actor(object.author, `${path}.author`),
     authorAssociation: text(object.authorAssociation, `${path}.authorAssociation`),
     state: reviewState(object.state, `${path}.state`),
-    commit:
-      object.commit === null
-        ? null
-        : text(record(object.commit, `${path}.commit`).oid, `${path}.commit.oid`),
+    commit: oid(object.commit, `${path}.commit`),
   };
+}
+
+function repository(response: unknown): Record<string, unknown> {
+  return record(record(record(response, "response").data, "data").repository, "repository");
+}
+
+function oid(commit: unknown, path: string): string | null {
+  return commit === null ? null : text(record(commit, path).oid, `${path}.oid`);
 }
 
 export function parsePullRequest(
   value: unknown,
   number: W.PrNumber
 ): Omit<PrFacts, "files" | "readiness"> {
-  const repository = record(record(value, "response").data, "data").repository;
-  const repo = record(repository, "repository");
+  const repo = repository(value);
   const [owner, name, ...rest] = text(repo.nameWithOwner, "nameWithOwner").split("/");
   if (owner === undefined || name === undefined || rest.length > 0)
     return invalid("nameWithOwner", repo.nameWithOwner);
@@ -158,6 +194,11 @@ export function parsePullRequest(
   return {
     pr: { owner, repo: name, number },
     head: text(pr.headRefOid, "headRefOid"),
+    base: optionalText(pr.baseRefName, "baseRefName"),
+    defaultBranch:
+      repo.defaultBranchRef === null
+        ? null
+        : text(record(repo.defaultBranchRef, "defaultBranchRef").name, "defaultBranchRef.name"),
     author: actor(pr.author, "author"),
     reviews: list(record(pr.reviews, "reviews").nodes, "reviews.nodes").map(parseReview),
     reviewThreadCount: count(
@@ -191,21 +232,7 @@ export class GhGateGitHub implements GateGitHub {
   }
 
   async facts(target: W.PrContext): Promise<PrFacts> {
-    const core = parsePullRequest(
-      await ghJson([
-        "api",
-        "graphql",
-        "-f",
-        `query=${PR_QUERY}`,
-        "-f",
-        `owner=${target.owner}`,
-        "-f",
-        `repo=${target.repo}`,
-        "-F",
-        `pr=${target.number}`,
-      ]),
-      target.number
-    );
+    const core = parsePullRequest(await graphql(PR_QUERY, target), target.number);
     const files = await this.files(core.pr);
     return { ...core, files, readiness: await this.readiness(core.pr) };
   }
@@ -259,13 +286,14 @@ export class GhGateGitHub implements GateGitHub {
       "--match-head-commit",
       head,
       method === "merge" ? "--merge" : "--squash",
-      "--delete-branch",
     ]);
-    return result.code === 0
-      ? { kind: "merged" }
-      : {
-          kind: "failed",
-          detail: `gh pr merge exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}`,
-        };
+    const after = record(repository(await graphql(OUTCOME_QUERY, pr)).pullRequest, "pullRequest");
+    const state = text(after.state, "state");
+    if (state === "MERGED" && optionalText(after.mergedAt, "mergedAt") !== null)
+      return { kind: "merged", commit: oid(after.mergeCommit, "mergeCommit") };
+    return {
+      kind: "failed",
+      detail: `gh pr merge exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}; PR is ${state}`,
+    };
   }
 }
