@@ -10,6 +10,7 @@ import type {
   Review,
   ReviewState,
 } from "./decide.ts";
+import type { Commit, Merge, Run, WatchGitHub, Workflow } from "./watch.ts";
 
 /** What GitHub reports after `gh pr merge`, whatever the command's exit code said. */
 export type MergeResult =
@@ -308,5 +309,141 @@ export class GhGateGitHub implements GateGitHub {
       kind: "failed",
       detail: `gh pr merge exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}; PR is ${state}`,
     };
+  }
+}
+
+const RUNS_PER_PAGE = 100;
+/** GitHub Actions run pages are cheap, but a repo with a stuck queue could page forever without a cap. */
+const MAX_RUN_PAGES = 10;
+const CANCELLED_LIKE = new Set(["cancelled", "skipped", "stale"]);
+
+function parseWorkflow(value: unknown, path: string): Workflow {
+  const object = record(value, path);
+  return {
+    id: count(object.id, `${path}.id`),
+    name: text(object.name, `${path}.name`),
+    path: text(object.path, `${path}.path`),
+  };
+}
+
+function parseRun(value: unknown, path: string): Run {
+  const object = record(value, path);
+  return {
+    id: count(object.id, `${path}.id`),
+    workflow: {
+      id: count(object.workflow_id, `${path}.workflow_id`),
+      name: text(object.name, `${path}.name`),
+      path: text(object.path, `${path}.path`),
+    },
+    sha: text(object.head_sha, `${path}.head_sha`),
+    status: text(object.status, `${path}.status`),
+    conclusion: optionalText(object.conclusion, `${path}.conclusion`),
+    createdAt: text(object.created_at, `${path}.created_at`),
+    url: text(object.html_url, `${path}.html_url`),
+  };
+}
+
+function parseCommit(value: unknown, path: string): Commit {
+  const object = record(value, path);
+  return {
+    sha: text(object.sha, `${path}.sha`),
+    message: text(record(object.commit, `${path}.commit`).message, `${path}.commit.message`),
+  };
+}
+
+export class GhWatchGitHub implements WatchGitHub {
+  private readonly reader = new GhGitHubReader();
+
+  originRepo(): Promise<W.Repository | null> {
+    return this.reader.originRepo();
+  }
+
+  async defaultBranch(repo: W.Repository): Promise<string> {
+    const object = record(await ghJson(["api", `repos/${repo.owner}/${repo.repo}`]), "repo");
+    return text(object.default_branch, "repo.default_branch");
+  }
+
+  async commit(repo: W.Repository, ref: string): Promise<Merge> {
+    const object = record(
+      await ghJson(["api", `repos/${repo.owner}/${repo.repo}/commits/${ref}`]),
+      "commit"
+    );
+    const inner = record(object.commit, "commit.commit");
+    return {
+      sha: text(object.sha, "commit.sha"),
+      message: text(inner.message, "commit.commit.message"),
+      committedAt: text(
+        record(inner.committer, "commit.commit.committer").date,
+        "commit.commit.committer.date"
+      ),
+    };
+  }
+
+  async workflows(repo: W.Repository): Promise<readonly Workflow[]> {
+    const object = record(
+      await ghJson(["api", `repos/${repo.owner}/${repo.repo}/actions/workflows?per_page=100`]),
+      "workflows"
+    );
+    return list(object.workflows, "workflows.workflows").map((value, index) =>
+      parseWorkflow(value, `workflows.workflows[${index}]`)
+    );
+  }
+
+  async runs(repo: W.Repository, branch: string, since: string): Promise<readonly Run[]> {
+    const runs: Run[] = [];
+    for (let page = 1; page <= MAX_RUN_PAGES; page += 1) {
+      const object = record(
+        await ghJson([
+          "api",
+          `repos/${repo.owner}/${repo.repo}/actions/runs?branch=${branch}&created=%3E%3D${since}&per_page=${RUNS_PER_PAGE}&page=${page}`,
+        ]),
+        "runs"
+      );
+      const batch = list(object.workflow_runs, "runs.workflow_runs");
+      for (const [index, value] of batch.entries()) {
+        const path = `runs.workflow_runs[${index}]`;
+        if (text(record(value, path).head_branch, `${path}.head_branch`) !== branch) continue;
+        runs.push(parseRun(value, path));
+      }
+      if (batch.length < RUNS_PER_PAGE) break;
+    }
+    return runs;
+  }
+
+  async commitsAfter(
+    repo: W.Repository,
+    sha: string,
+    branch: string
+  ): Promise<readonly Commit[] | null> {
+    const object = record(
+      await ghJson(["api", `repos/${repo.owner}/${repo.repo}/compare/${sha}...${branch}`]),
+      "compare"
+    );
+    const status = text(object.status, "compare.status");
+    if (status !== "ahead" && status !== "identical") return null;
+    return list(object.commits, "compare.commits").map((value, index) =>
+      parseCommit(value, `compare.commits[${index}]`)
+    );
+  }
+
+  async previousConclusion(
+    repo: W.Repository,
+    workflow: number,
+    branch: string,
+    before: string
+  ): Promise<string | null> {
+    const object = record(
+      await ghJson([
+        "api",
+        `repos/${repo.owner}/${repo.repo}/actions/workflows/${workflow}/runs?branch=${branch}&status=completed&created=%3C${before}&per_page=30`,
+      ]),
+      "previous runs"
+    );
+    for (const [index, value] of list(object.workflow_runs, "previous runs.workflow_runs").entries()) {
+      const path = `previous runs.workflow_runs[${index}]`;
+      const conclusion = optionalText(record(value, path).conclusion, `${path}.conclusion`);
+      if (conclusion !== null && !CANCELLED_LIKE.has(conclusion)) return conclusion;
+    }
+    return null;
   }
 }
