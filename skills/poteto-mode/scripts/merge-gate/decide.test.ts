@@ -10,10 +10,12 @@ import type {
 } from "../watch-pr/types.ts";
 import { parsePrNumber } from "../watch-pr/types.ts";
 import {
+  type Comment,
   type Decision,
   type PrFacts,
   type Readiness,
   type Review,
+  attestationMarker,
   decide,
 } from "./decide.ts";
 import { parsePolicy } from "./policy.ts";
@@ -24,7 +26,11 @@ const OLD = "0000000000000000000000000000000000000000";
 const policy = parsePolicy({
   defaults: { humanOnly: [".github/**", "**/migrations/**"] },
   repos: {
-    "acme/app": { humanOnly: ["billing/**"], mergeCommitBranches: ["sync/*"] },
+    "acme/app": {
+      humanOnly: ["billing/**"],
+      mergeCommitBranches: ["sync/*"],
+      reviewSubstitutes: ["claude-review"],
+    },
     "acme/*": {},
     "strict/lenient": {},
     "strict/*": { requireHumanApprovalOnHead: true },
@@ -157,6 +163,7 @@ function run(scenario: Scenario = {}): Decision {
       defaultBranch: "main",
       author: { login: "agent", type: "User" },
       reviews: [],
+      comments: [],
       reviewThreadCount: threads.length,
       reviewCount: 0,
       changedFileCount: files.length,
@@ -352,5 +359,86 @@ describe("merge method", () => {
     ["acme/other", "sync/upstream", ["merge:squash"]],
   ])("%s head %s", (repo, headRefName, expected) => {
     expect(codes(run({ repo, pr: { headRefName } }))).toEqual(expected);
+  });
+});
+
+describe("review substitutes", () => {
+  const claudeFailure: FailedCheck = {
+    ...details,
+    kind: "failed",
+    name: "claude-review",
+    reportedState: "FAILURE",
+  };
+  const onlyClaudeFailed: CiState = {
+    ...failing,
+    all: [passingCheck("lint"), claudeFailure],
+    failed: [claudeFailure],
+  };
+  const attestation = (head: string, author = "agent"): Comment => ({
+    author: { login: author, type: "User" },
+    body: `interrogate came back clean\n${attestationMarker(head)}`,
+  });
+  const unstable = { mergeStateStatus: "UNSTABLE" as const };
+
+  it.each<[string, Scenario, readonly string[]]>([
+    [
+      "a failed reviewer check with an attestation on the head",
+      { ci: onlyClaudeFailed, pr: unstable, facts: { comments: [attestation(HEAD)] } },
+      ["merge:squash"],
+    ],
+    [
+      "a failed reviewer check without an attestation",
+      { ci: onlyClaudeFailed, pr: unstable },
+      ["not-mergeable", "checks-failed"],
+    ],
+    [
+      "an attestation for an older head",
+      { ci: onlyClaudeFailed, pr: unstable, facts: { comments: [attestation(OLD)] } },
+      ["not-mergeable", "checks-failed"],
+    ],
+    [
+      "an attestation from someone other than the viewer",
+      {
+        ci: onlyClaudeFailed,
+        pr: unstable,
+        facts: { comments: [attestation(HEAD, "stranger")] },
+      },
+      ["not-mergeable", "checks-failed"],
+    ],
+    [
+      "an attestation while another check also failed",
+      {
+        ci: { ...failing, all: [claudeFailure, testFailure], failed: [claudeFailure, testFailure] },
+        pr: unstable,
+        facts: { comments: [attestation(HEAD)] },
+      },
+      ["not-mergeable", "checks-failed"],
+    ],
+    [
+      "an attestation for a check the policy does not list",
+      { ci: failing, pr: unstable, facts: { comments: [attestation(HEAD)] } },
+      ["not-mergeable", "checks-failed"],
+    ],
+    [
+      "an attestation while a check is still pending",
+      {
+        ci: { ...onlyClaudeFailed, pending: [e2ePending], all: [claudeFailure, e2ePending] },
+        pr: unstable,
+        facts: { comments: [attestation(HEAD)] },
+      },
+      ["checks-pending"],
+    ],
+    [
+      "an attestation while review threads are unresolved",
+      {
+        ci: onlyClaudeFailed,
+        pr: unstable,
+        threads: [thread],
+        facts: { comments: [attestation(HEAD)] },
+      },
+      ["threads-unresolved"],
+    ],
+  ])("%s", (_name, scenario, expected) => {
+    expect(codes(run(scenario))).toEqual(expected);
   });
 });

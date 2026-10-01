@@ -5,6 +5,8 @@ export interface RepoPolicy {
   readonly humanOnly: readonly string[];
   readonly requireHumanApprovalOnHead: boolean;
   readonly mergeCommitBranches: readonly string[];
+  /** Check names whose failure an interrogate attestation on the current head replaces. */
+  readonly reviewSubstitutes: readonly string[];
 }
 
 /** Repo entries keyed by lowercased "owner/name" or "owner/*"; `repoPolicy` combines them with the defaults. */
@@ -55,6 +57,7 @@ function repoEntry(value: unknown, path: string): RepoPolicy {
     "humanOnly",
     "requireHumanApprovalOnHead",
     "mergeCommitBranches",
+    "reviewSubstitutes",
   ]);
   const requireHuman =
     entry.requireHumanApprovalOnHead === undefined ? false : entry.requireHumanApprovalOnHead;
@@ -66,6 +69,10 @@ function repoEntry(value: unknown, path: string): RepoPolicy {
     mergeCommitBranches: globs(
       entry.mergeCommitBranches === undefined ? [] : entry.mergeCommitBranches,
       `${path}.mergeCommitBranches`
+    ),
+    reviewSubstitutes: globs(
+      entry.reviewSubstitutes === undefined ? [] : entry.reviewSubstitutes,
+      `${path}.reviewSubstitutes`
     ),
   };
 }
@@ -118,5 +125,6 @@ export function repoPolicy(policy: Policy, repo: Repository): RepoPolicy | null 
     humanOnly: union([policy.defaultHumanOnly, ...entries.map((entry) => entry.humanOnly)]),
     requireHumanApprovalOnHead: entries.some((entry) => entry.requireHumanApprovalOnHead),
     mergeCommitBranches: union(entries.map((entry) => entry.mergeCommitBranches)),
+    reviewSubstitutes: union(entries.map((entry) => entry.reviewSubstitutes)),
   };
 }

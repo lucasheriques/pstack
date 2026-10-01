@@ -4,6 +4,7 @@ import type * as W from "../watch-pr/types.ts";
 import type {
   Actor,
   ChangedFile,
+  Comment,
   MergeMethod,
   PrFacts,
   Readiness,
@@ -44,6 +45,12 @@ query MergeGatePr($owner: String!, $repo: String!, $pr: Int!) {
       changedFiles
       author { __typename login }
       reviewThreads { totalCount }
+      comments(last: 100) {
+        nodes {
+          body
+          author { __typename login }
+        }
+      }
       reviews(last: 100) {
         totalCount
         nodes {
@@ -176,6 +183,15 @@ function parseReview(value: unknown, index: number): Review {
   };
 }
 
+function parseComment(value: unknown, index: number): Comment {
+  const path = `comments[${index}]`;
+  const object = record(value, path);
+  return {
+    author: actor(object.author, `${path}.author`),
+    body: text(object.body, `${path}.body`),
+  };
+}
+
 function repository(response: unknown): Record<string, unknown> {
   return record(record(record(response, "response").data, "data").repository, "repository");
 }
@@ -203,6 +219,7 @@ export function parsePullRequest(
         : text(record(repo.defaultBranchRef, "defaultBranchRef").name, "defaultBranchRef.name"),
     author: actor(pr.author, "author"),
     reviews: list(record(pr.reviews, "reviews").nodes, "reviews.nodes").map(parseReview),
+    comments: list(record(pr.comments, "comments").nodes, "comments.nodes").map(parseComment),
     reviewCount: count(record(pr.reviews, "reviews").totalCount, "reviews.totalCount"),
     reviewThreadCount: count(
       record(pr.reviewThreads, "reviewThreads").totalCount,

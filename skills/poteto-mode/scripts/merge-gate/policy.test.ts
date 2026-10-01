@@ -7,11 +7,13 @@ const valid = {
     "acme/app": {
       humanOnly: ["billing/**", ".github/**"],
       mergeCommitBranches: ["sync/*"],
+      reviewSubstitutes: ["claude-review"],
     },
     "acme/*": {
       humanOnly: ["infra/**"],
       requireHumanApprovalOnHead: true,
       mergeCommitBranches: ["release/*"],
+      reviewSubstitutes: ["codex-review"],
     },
     "solo/app": { requireHumanApprovalOnHead: true },
     "loose/*": {},
@@ -26,6 +28,7 @@ describe("parsePolicy", () => {
         humanOnly: [".github/**", "infra/**", "billing/**"],
         requireHumanApprovalOnHead: true,
         mergeCommitBranches: ["release/*", "sync/*"],
+        reviewSubstitutes: ["codex-review", "claude-review"],
       },
     ],
     [
@@ -34,15 +37,16 @@ describe("parsePolicy", () => {
         humanOnly: [".github/**", "infra/**"],
         requireHumanApprovalOnHead: true,
         mergeCommitBranches: ["release/*"],
+        reviewSubstitutes: ["codex-review"],
       },
     ],
     [
       "solo/app",
-      { humanOnly: [".github/**"], requireHumanApprovalOnHead: true, mergeCommitBranches: [] },
+      { humanOnly: [".github/**"], requireHumanApprovalOnHead: true, mergeCommitBranches: [], reviewSubstitutes: [] },
     ],
     [
       "loose/app",
-      { humanOnly: [".github/**"], requireHumanApprovalOnHead: false, mergeCommitBranches: [] },
+      { humanOnly: [".github/**"], requireHumanApprovalOnHead: false, mergeCommitBranches: [], reviewSubstitutes: [] },
     ],
     ["solo/other", null],
     ["other/app", null],

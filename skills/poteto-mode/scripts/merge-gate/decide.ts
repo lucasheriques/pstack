@@ -51,6 +51,18 @@ export interface Review {
   readonly commit: string | null;
 }
 
+export interface Comment {
+  readonly author: Actor | null;
+  readonly body: string;
+}
+
+/**
+ * The comment the author posts once the interrogate gate came back clean on
+ * `head`. It names the head, so it goes stale with the next push.
+ */
+export const attestationMarker = (head: string): string =>
+  `<!-- pstack-gate:interrogate head=${head} verdict=clean -->`;
+
 export interface ChangedFile {
   readonly path: string;
   readonly previousPath: string | null;
@@ -76,6 +88,8 @@ export interface PrFacts {
   readonly defaultBranch: string | null;
   readonly author: Actor | null;
   readonly reviews: readonly Review[];
+  /** The last 100 issue comments, oldest first. */
+  readonly comments: readonly Comment[];
   readonly reviewThreadCount: number;
   readonly reviewCount: number;
   readonly changedFileCount: number;
@@ -118,6 +132,28 @@ const CHECK_OUTCOME: Record<W.Check["kind"], "ok" | "failed" | "pending"> = {
 
 const reason = (code: ReasonCode, detail: string): Reason => ({ code, detail });
 
+/**
+ * A reviewer check named in `reviewSubstitutes` may fail (the Claude review
+ * bot out of usage, say) when the PR author attested a clean interrogate run
+ * on this exact head.
+ */
+interface Substitution {
+  readonly configured: ReadonlySet<string>;
+  readonly attested: boolean;
+}
+
+const noSubstitution: Substitution = { configured: new Set(), attested: false };
+
+function substitution(repo: RepoPolicy, facts: PrFacts, viewer: string): Substitution {
+  const marker = attestationMarker(facts.head);
+  return {
+    configured: new Set(repo.reviewSubstitutes),
+    attested: facts.comments.some(
+      (comment) => comment.author?.login === viewer && comment.body.includes(marker)
+    ),
+  };
+}
+
 export function decide(policy: Policy, facts: PrFacts, viewer: string): Decision {
   const repo = repoPolicy(policy, facts.pr);
   const stances = latestStances(facts.reviews);
@@ -129,11 +165,11 @@ export function decide(policy: Policy, facts: PrFacts, viewer: string): Decision
           "repo-not-allowed",
           `${facts.pr.owner}/${facts.pr.repo} matches no repos entry in the merge policy`
         ),
-        ...pullRequestReasons(facts, viewer, stances),
+        ...pullRequestReasons(facts, viewer, stances, noSubstitution),
       ],
     };
   const reasons = nonEmpty([
-    ...pullRequestReasons(facts, viewer, stances),
+    ...pullRequestReasons(facts, viewer, stances, substitution(repo, facts, viewer)),
     ...approvalReasons(repo, facts, stances),
   ]);
   if (reasons !== null) return { kind: "refuse", reasons };
@@ -160,7 +196,8 @@ function latestStances(reviews: readonly Review[]): readonly Stance[] {
 function pullRequestReasons(
   facts: PrFacts,
   viewer: string,
-  stances: readonly Stance[]
+  stances: readonly Stance[],
+  substituted: Substitution
 ): Reason[] {
   const { readiness } = facts;
   const pr = readiness.facts;
@@ -185,7 +222,12 @@ function pullRequestReasons(
   reasons.push(...changesRequestedReasons(pr.reviewDecision, stances));
   if (readiness.kind === "open" || readiness.kind === "no-checks")
     reasons.push(
-      ...readinessReasons(pr, readiness.threads, readiness.kind === "open" ? readiness.ci : null)
+      ...readinessReasons(
+        pr,
+        readiness.threads,
+        readiness.kind === "open" ? readiness.ci : null,
+        substituted
+      )
     );
   if (facts.reviewThreadCount > THREAD_PAGE_SIZE)
     reasons.push(
@@ -211,17 +253,26 @@ function pullRequestReasons(
 function readinessReasons(
   pr: W.PullRequestFacts,
   threads: readonly W.ReviewThread[],
-  ci: W.CiState | null
+  ci: W.CiState | null,
+  substituted: Substitution
 ): Reason[] {
   const reasons: Reason[] = [];
-  if (pr.mergeable !== "MERGEABLE" || !MERGEABLE_STATES.has(pr.mergeStateStatus))
+  // A failed check leaves GitHub at UNSTABLE; that is fine only when every failure is substituted.
+  const unstableBecauseSubstituted =
+    pr.mergeStateStatus === "UNSTABLE" &&
+    ci?.kind === "ci-failing" &&
+    ci.failed.every((check) => isSubstituted(check.name, substituted));
+  if (
+    pr.mergeable !== "MERGEABLE" ||
+    !(MERGEABLE_STATES.has(pr.mergeStateStatus) || unstableBecauseSubstituted)
+  )
     reasons.push(
       reason(
         "not-mergeable",
         `GitHub reports mergeable=${pr.mergeable}, mergeStateStatus=${pr.mergeStateStatus}`
       )
     );
-  reasons.push(...checkReasons(ci));
+  reasons.push(...checkReasons(ci, substituted));
   if (threads.length > 0)
     reasons.push(
       reason(
@@ -248,12 +299,20 @@ function changesRequestedReasons(
   return [];
 }
 
-function checkReasons(ci: W.CiState | null): Reason[] {
+const isSubstituted = (name: string, substituted: Substitution): boolean =>
+  substituted.attested && substituted.configured.has(name);
+
+function checkReasons(ci: W.CiState | null, substituted: Substitution): Reason[] {
   if (ci === null)
     return [reason("checks-missing", "no checks reported on the head commit")];
   const failed = ci.all
     .filter((check) => CHECK_OUTCOME[check.kind] === "failed")
-    .map((check) => `${check.name} (${check.reportedState})`);
+    .filter((check) => !isSubstituted(check.name, substituted))
+    .map((check) =>
+      substituted.configured.has(check.name)
+        ? `${check.name} (${check.reportedState}; a clean interrogate attestation on the head would replace it)`
+        : `${check.name} (${check.reportedState})`
+    );
   if (ci.kind === "ci-github-rejected")
     failed.push(`GitHub head rollup ${ci.github.headRollupState}`);
   const pending = ci.all
