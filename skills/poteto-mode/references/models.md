@@ -14,13 +14,13 @@ The main loop is the architect: planning, architecture, taste (UI/UX, product, s
 | why investigators | `sonnet` |
 | why synthesizer | `opus` |
 | recall miners | `sonnet` |
-| reflect tooling | `fable` |
+| reflect tooling | `opus` |
 | reflect judgment, divergent, synthesizer | `opus` |
-| arena runners | `opus`, `fable`, `sonnet` |
-| arena cross-judge pool | `fable`, `opus` |
+| arena runners | `opus`, `sonnet` |
+| arena cross-judge pool | `opus` |
 | swarm workers | `sonnet` |
-| architect runners | `opus`, `fable`, `sonnet` |
-| interrogate reviewers | `opus`, `fable` |
+| architect runners | `opus`, `sonnet` |
+| interrogate reviewers | `opus`, `sonnet` |
 
 Panel roles (arena runners, architect runners, interrogate reviewers) are lists. One subagent runs per entry, so the list length sets the fan-out. The arena cross-judge picks one entry whose model differs from the parent's when possible. Swarm workers use one model unless a race or comparison assigns a model per arm.
 
