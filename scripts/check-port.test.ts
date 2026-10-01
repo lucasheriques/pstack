@@ -27,6 +27,8 @@ describe("findingsFor", () => {
     ["skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/references/missing.md`.", "unresolved-skill-path"],
     ["skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/../nope/SKILL.md`.", "unresolved-skill-path"],
     ["skills/x/SKILL.md", 'Spawn `subagent_type: "pstack:no-such-agent"`.', "unresolved-pstack-name"],
+    ["skills/poteto-mode/references/models.md", "| interrogate reviewers | `opus`, `fable` |", "fable-model"],
+    ["skills/x/SKILL.md", 'Spawn with `model: "fable"`.', "fable-model"],
     [".claude-plugin/plugin.json", '  "version": "0.15.4",', "plugin-version"],
     [".claude-plugin/marketplace.json", '      "version": "1.0.0",', "plugin-version"],
   ])("%s flags %p as %s", (path, line, rule) => {
@@ -38,6 +40,8 @@ describe("findingsFor", () => {
     ["git remote named origin", "skills/x/SKILL.md", "git fetch origin && git reset --hard origin/main"],
     ["Claude Code tools", "skills/x/SKILL.md", "Use AskUserQuestion, then the Agent tool."],
     ["bugbot reference file path", "skills/x/SKILL.md", "Triage per `references/bugbot-triage.md`."],
+    ["Fable named in prose", "skills/poteto-mode/references/models.md", "Never use Haiku or Fable."],
+    ["reflect's sample sentence", "skills/reflect/references/synthesizer.md", "we renamed the `opus` alias to `fable`"],
     ["resolvable principle", "skills/x/SKILL.md", "Read **principle-laziness-protocol**."],
     ["the port's own README", "README.md", "Ported from Cursor's pstack."],
     ["an existing skill-relative path", "skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/references/explorer-prompt.md`."],

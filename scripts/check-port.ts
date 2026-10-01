@@ -34,6 +34,7 @@ const rules: Rule[] = [
     exemptPaths: /^skills\/typescript-best-practices\/|\.ts$/,
   },
   { name: "non-claude-model", pattern: /\bgrok\b|\bgrok-|\bgpt-|sol-max|\bcomposer-|\bgemini\b|\bcodex\b|\bkimi\b/i },
+  { name: "fable-model", pattern: /\bfable\b/, exemptPaths: /^skills\/reflect\/references\/synthesizer\.md$/ },
   { name: "cursor-model-slug", pattern: /claude-[a-z]+-\d-\d-(max|xhigh|high|medium|low)|inherit-parent/ },
   { name: "origin-forge", pattern: /\borigin pr\b|\bOrigin\b/ },
   { name: "cursor-cloud-agent", pattern: /\bcloud[- ]agents?\b/i },
