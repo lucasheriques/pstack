@@ -192,7 +192,7 @@ function review(overrides: Partial<Review> = {}): Review {
 
 describe("decide", () => {
   it("merges an all-clear PR by squash", () => {
-    expect(run()).toEqual({ kind: "merge", method: "squash" });
+    expect(run()).toEqual({ kind: "merge", method: "squash", substituted: [] });
   });
 
   it.each<[string, Scenario, readonly string[]]>([
@@ -374,10 +374,12 @@ describe("review substitutes", () => {
     all: [passingCheck("lint"), claudeFailure],
     failed: [claudeFailure],
   };
-  const attestation = (head: string, author = "agent"): Comment => ({
-    author: { login: author, type: "User" },
-    body: `interrogate came back clean\n${attestationMarker(head)}`,
-  });
+  const attestation = (
+    head: string,
+    author = "agent",
+    verdict: "clean" | "blockers" = "clean",
+    type = "User"
+  ): Comment => ({ author: { login: author, type }, body: attestationMarker(head, verdict) });
   const unstable = { mergeStateStatus: "UNSTABLE" as const };
 
   it.each<[string, Scenario, readonly string[]]>([
@@ -440,5 +442,74 @@ describe("review substitutes", () => {
     ],
   ])("%s", (_name, scenario, expected) => {
     expect(codes(run(scenario))).toEqual(expected);
+  });
+
+  it.each<[string, Scenario, readonly string[]]>([
+    [
+      "a later blockers marker revokes a clean one",
+      {
+        ci: onlyClaudeFailed,
+        pr: unstable,
+        facts: { comments: [attestation(HEAD), attestation(HEAD, "agent", "blockers")] },
+      },
+      ["not-mergeable", "checks-failed"],
+    ],
+    [
+      "a clean marker after a blockers one restores it",
+      {
+        ci: onlyClaudeFailed,
+        pr: unstable,
+        facts: { comments: [attestation(HEAD, "agent", "blockers"), attestation(HEAD)] },
+      },
+      ["merge:squash"],
+    ],
+    [
+      "a marker quoted inside other text",
+      {
+        ci: onlyClaudeFailed,
+        pr: unstable,
+        facts: {
+          comments: [
+            { author: { login: "agent", type: "User" }, body: `will post ${attestationMarker(HEAD)} later` },
+          ],
+        },
+      },
+      ["not-mergeable", "checks-failed"],
+    ],
+    [
+      "a bot that shares the viewer's login",
+      {
+        ci: onlyClaudeFailed,
+        pr: unstable,
+        facts: { comments: [attestation(HEAD, "agent", "clean", "Bot")] },
+      },
+      ["not-mergeable", "checks-failed"],
+    ],
+    [
+      "a required reviewer check, which leaves GitHub BLOCKED",
+      {
+        ci: onlyClaudeFailed,
+        pr: { mergeStateStatus: "BLOCKED" },
+        facts: { comments: [attestation(HEAD)] },
+      },
+      ["not-mergeable"],
+    ],
+    [
+      "the head moving after the attestation",
+      {
+        ci: onlyClaudeFailed,
+        pr: { ...unstable, headRefOid: OLD },
+        facts: { comments: [attestation(HEAD)] },
+      },
+      ["head-moved"],
+    ],
+  ])("%s", (_name, scenario, expected) => {
+    expect(codes(run(scenario))).toEqual(expected);
+  });
+
+  it("records which failed checks the attestation replaced", () => {
+    expect(
+      run({ ci: onlyClaudeFailed, pr: unstable, facts: { comments: [attestation(HEAD)] } })
+    ).toEqual({ kind: "merge", method: "squash", substituted: ["claude-review"] });
   });
 });

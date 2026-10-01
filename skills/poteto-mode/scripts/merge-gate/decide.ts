@@ -60,8 +60,8 @@ export interface Comment {
  * The comment the author posts once the interrogate gate came back clean on
  * `head`. It names the head, so it goes stale with the next push.
  */
-export const attestationMarker = (head: string): string =>
-  `<!-- pstack-gate:interrogate head=${head} verdict=clean -->`;
+export const attestationMarker = (head: string, verdict: "clean" | "blockers" = "clean"): string =>
+  `<!-- pstack-gate:interrogate head=${head} verdict=${verdict} -->`;
 
 export interface ChangedFile {
   readonly path: string;
@@ -100,7 +100,12 @@ export interface PrFacts {
 export type MergeMethod = "squash" | "merge";
 
 export type Decision =
-  | { readonly kind: "merge"; readonly method: MergeMethod }
+  | {
+      readonly kind: "merge";
+      readonly method: MergeMethod;
+      /** Failed reviewer checks an attestation replaced, so the verdict records the override. */
+      readonly substituted: readonly string[];
+    }
   | { readonly kind: "refuse"; readonly reasons: W.NonEmpty<Reason> };
 
 /** watch-pr reads the first 100 review threads and does not paginate. */
@@ -144,15 +149,29 @@ interface Substitution {
 
 const noSubstitution: Substitution = { configured: new Set(), attested: false };
 
+// The newest of the author's own comments that are exactly a marker for this
+// head decides, so a later `blockers` marker revokes an earlier `clean` one and
+// a marker quoted inside other text counts for nothing.
 function substitution(repo: RepoPolicy, facts: PrFacts, viewer: string): Substitution {
-  const marker = attestationMarker(facts.head);
+  const markers = new Map([
+    [attestationMarker(facts.head, "clean"), true],
+    [attestationMarker(facts.head, "blockers"), false],
+  ]);
+  const verdicts = facts.comments
+    .filter((comment) => comment.author?.type === "User" && comment.author.login === viewer)
+    .flatMap((comment) => markers.get(comment.body.trim()) ?? []);
   return {
     configured: new Set(repo.reviewSubstitutes),
-    attested: facts.comments.some(
-      (comment) => comment.author?.login === viewer && comment.body.includes(marker)
-    ),
+    attested: verdicts.at(-1) === true,
   };
 }
+
+const substitutedChecks = (facts: PrFacts, substituted: Substitution): string[] =>
+  facts.readiness.kind === "open"
+    ? facts.readiness.ci.all
+        .filter((check) => check.kind === "failed" && isSubstituted(check.name, substituted))
+        .map((check) => check.name)
+    : [];
 
 export function decide(policy: Policy, facts: PrFacts, viewer: string): Decision {
   const repo = repoPolicy(policy, facts.pr);
@@ -176,6 +195,7 @@ export function decide(policy: Policy, facts: PrFacts, viewer: string): Decision
   const branch = facts.readiness.facts.headRefName;
   return {
     kind: "merge",
+    substituted: substitutedChecks(facts, substitution(repo, facts, viewer)),
     method: repo.mergeCommitBranches.some((glob) => new Bun.Glob(glob).match(branch))
       ? "merge"
       : "squash",
@@ -308,11 +328,7 @@ function checkReasons(ci: W.CiState | null, substituted: Substitution): Reason[]
   const failed = ci.all
     .filter((check) => CHECK_OUTCOME[check.kind] === "failed")
     .filter((check) => !isSubstituted(check.name, substituted))
-    .map((check) =>
-      substituted.configured.has(check.name)
-        ? `${check.name} (${check.reportedState}; a clean interrogate attestation on the head would replace it)`
-        : `${check.name} (${check.reportedState})`
-    );
+    .map((check) => `${check.name} (${check.reportedState})`);
   if (ci.kind === "ci-github-rejected")
     failed.push(`GitHub head rollup ${ci.github.headRollupState}`);
   const pending = ci.all

@@ -254,7 +254,7 @@ describe("merge-gate CLI against a fake gh", () => {
       "reports a merge that landed despite a non-zero exit",
       { merge: [{ stderr: "GraphQL: timeout\n", exit: 1 }] },
       0,
-      { ...subject, decision: "merge", merged: true, mergeCommit: MERGE_COMMIT, reasons: [] },
+      { ...subject, decision: "merge", merged: true, mergeCommit: MERGE_COMMIT, reasons: [], substituted: [] },
     ],
     [
       "refuses a merge GitHub rejected",

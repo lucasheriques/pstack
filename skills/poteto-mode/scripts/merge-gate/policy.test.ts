@@ -13,7 +13,6 @@ const valid = {
       humanOnly: ["infra/**"],
       requireHumanApprovalOnHead: true,
       mergeCommitBranches: ["release/*"],
-      reviewSubstitutes: ["codex-review"],
     },
     "solo/app": { requireHumanApprovalOnHead: true },
     "loose/*": {},
@@ -28,7 +27,7 @@ describe("parsePolicy", () => {
         humanOnly: [".github/**", "infra/**", "billing/**"],
         requireHumanApprovalOnHead: true,
         mergeCommitBranches: ["release/*", "sync/*"],
-        reviewSubstitutes: ["codex-review", "claude-review"],
+        reviewSubstitutes: ["claude-review"],
       },
     ],
     [
@@ -37,7 +36,7 @@ describe("parsePolicy", () => {
         humanOnly: [".github/**", "infra/**"],
         requireHumanApprovalOnHead: true,
         mergeCommitBranches: ["release/*"],
-        reviewSubstitutes: ["codex-review"],
+        reviewSubstitutes: [],
       },
     ],
     [
@@ -73,6 +72,11 @@ describe("parsePolicy", () => {
     ["a repo key without an owner", { ...valid, repos: { app: {} } }],
     ["a wildcard owner", { ...valid, repos: { "*/*": {} } }],
     ["a nested repo key", { ...valid, repos: { "acme/app/x": {} } }],
+    ["a non-array substitute list", { ...valid, repos: { "acme/app": { reviewSubstitutes: "claude-review" } } }],
+    ["an empty substitute name", { ...valid, repos: { "acme/app": { reviewSubstitutes: [""] } } }],
+    ["a non-string substitute name", { ...valid, repos: { "acme/app": { reviewSubstitutes: [1] } } }],
+    ["a substitute pattern", { ...valid, repos: { "acme/app": { reviewSubstitutes: ["claude-*"] } } }],
+    ["substitutes on an owner wildcard", { ...valid, repos: { "acme/*": { reviewSubstitutes: ["claude-review"] } } }],
     ["keys that differ only by case", { ...valid, repos: { "acme/app": {}, "Acme/App": {} } }],
   ])("rejects %s", (_name, value) => {
     expect(() => parsePolicy(value)).toThrow(PolicyError);

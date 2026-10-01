@@ -52,6 +52,17 @@ function globs(value: unknown, path: string): readonly string[] {
   return value;
 }
 
+// Exact check names, never patterns: a pattern would forgive failures it was not written for.
+function checkNames(value: unknown, path: string): readonly string[] {
+  if (value === undefined) return [];
+  if (
+    !Array.isArray(value) ||
+    !value.every((name) => typeof name === "string" && name !== "" && !name.includes("*"))
+  )
+    throw new PolicyError(`${path} must be an array of exact check names without "*"`);
+  return value;
+}
+
 function repoEntry(value: unknown, path: string): RepoPolicy {
   const entry = object(value, path, [
     "humanOnly",
@@ -70,10 +81,7 @@ function repoEntry(value: unknown, path: string): RepoPolicy {
       entry.mergeCommitBranches === undefined ? [] : entry.mergeCommitBranches,
       `${path}.mergeCommitBranches`
     ),
-    reviewSubstitutes: globs(
-      entry.reviewSubstitutes === undefined ? [] : entry.reviewSubstitutes,
-      `${path}.reviewSubstitutes`
-    ),
+    reviewSubstitutes: checkNames(entry.reviewSubstitutes, `${path}.reviewSubstitutes`),
   };
 }
 
@@ -88,6 +96,10 @@ export function parsePolicy(value: unknown): Policy {
     if (!REPO_KEY.test(key))
       throw new PolicyError(`repos key "${key}" must be "owner/name" or "owner/*"`);
     const normalized = key.toLowerCase();
+    // Substitutes loosen the gate, so they must be named per repo: an owner wildcard would
+    // enable them for every repo under it with no way for a repo entry to switch them off.
+    if (key.endsWith("/*") && isRecord(entry) && entry.reviewSubstitutes !== undefined)
+      throw new PolicyError(`repos["${key}"].reviewSubstitutes is only allowed on an exact owner/name key`);
     if (repos.has(normalized))
       throw new PolicyError(`repos key "${key}" duplicates another key ignoring case`);
     repos.set(normalized, repoEntry(entry, `repos["${key}"]`));

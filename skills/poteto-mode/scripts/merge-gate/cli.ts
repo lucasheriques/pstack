@@ -21,12 +21,14 @@ export type Verdict = Subject &
         readonly merged: false;
         readonly mergeCommit: null;
         readonly reasons: readonly [];
+        readonly substituted: readonly string[];
       }
     | {
         readonly decision: "merge";
         readonly merged: true;
         readonly mergeCommit: string | null;
         readonly reasons: readonly [];
+        readonly substituted: readonly string[];
       }
     | {
         readonly decision: "refuse";
@@ -127,13 +129,13 @@ async function evaluate(request: Request, runtime: Runtime): Promise<Verdict> {
     if (decision.kind === "refuse")
       return { ...subject, decision: "refuse", merged: false, mergeCommit: null, reasons: decision.reasons };
     if (!request.merge)
-      return { ...subject, decision: "merge", merged: false, mergeCommit: null, reasons: [] };
+      return { ...subject, decision: "merge", merged: false, mergeCommit: null, reasons: [], substituted: decision.substituted };
     const head = await github.head(facts.pr);
     if (head !== facts.head)
       return refuse(subject, "head-moved", `head was ${facts.head}, then ${head ?? "unknown"} before merging`);
     const merge = await github.merge(facts.pr, facts.head, decision.method);
     return merge.kind === "merged"
-      ? { ...subject, decision: "merge", merged: true, mergeCommit: merge.commit, reasons: [] }
+      ? { ...subject, decision: "merge", merged: true, mergeCommit: merge.commit, reasons: [], substituted: decision.substituted }
       : refuse(subject, merge.kind === "unverified" ? "merge-unverified" : "merge-failed", merge.detail);
   } catch (error) {
     if (error instanceof PolicyError) return refuse(subject, "policy-invalid", error.message);
