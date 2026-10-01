@@ -1,6 +1,6 @@
 # Models
 
-Claude models only, and only `opus` and `sonnet`. Pass the value as the Agent tool's `model` parameter. `inherit` means omit `model`, so the role runs on the parent chat model. Never use `haiku` or `fable`. Edit this file to change a role; every pstack skill reads it.
+Claude models only, and only `opus` and `sonnet`. Pass the value as the Agent tool's `model` parameter. `inherit` means omit `model`, so the role runs on the parent chat model. Never use Haiku or Fable. Edit this file to change a role; every pstack skill reads it.
 
 The main loop is the architect: planning, architecture, taste (UI/UX, product, strategy), hard debugging, and reviewing every piece of delegated work. Delegate only work that is large and genuinely independent. Don't delegate what you can finish in a handful of tool calls. Prefer one agent over several. Always tell the user what you delegated and to which model.
 
