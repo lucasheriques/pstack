@@ -15,6 +15,7 @@ describe("findingsFor", () => {
     ["skills/x/SKILL.md", "Reviewer B | `gpt-5.6-sol-max` |", "non-claude-model"],
     ["skills/x/SKILL.md", "Hand it to codex exec.", "non-claude-model"],
     ["skills/x/SKILL.md", "Model `claude-opus-5-5-max`.", "cursor-model-slug"],
+    ["skills/x/SKILL.md", "Reflect tooling | `fable` |", "banned-model"],
     ["skills/x/SKILL.md", "Use `origin pr merge <pr>`.", "origin-forge"],
     ["skills/x/SKILL.md", "Each a cloud agent.", "cursor-cloud-agent"],
     ["skills/x/SKILL.md", "mode: true", "cursor-frontmatter"],

@@ -17,7 +17,7 @@ The main loop is the architect: planning, architecture, taste (UI/UX, product, s
 | reflect tooling | `opus` |
 | reflect judgment, divergent, synthesizer | `opus` |
 | arena runners | `opus`, `sonnet` |
-| arena cross-judge pool | `opus` |
+| arena cross-judge pool | `opus`, `sonnet` |
 | swarm workers | `sonnet` |
 | architect runners | `opus`, `sonnet` |
 | interrogate reviewers | `opus`, `sonnet` |

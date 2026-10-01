@@ -25,7 +25,7 @@ Drop (implementation details that drift):
 - "linter at SHA `bd91aa7` uses chars/4 heuristic"
 - "`<specific-skill-name>` has 175 tokens at limit 80"
 - "a review bot flagged regex backtracking on May 2"
-- "we renamed the `opus` alias to `fable` in `encodingForModel`"
+- "we renamed the `opus` alias to `sonnet` in `encodingForModel`"
 
 Keep (durable patterns):
 - "closed regex enums for trigger detection are brittle. Prefer schema-validated structures"

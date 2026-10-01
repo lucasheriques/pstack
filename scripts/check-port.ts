@@ -35,6 +35,7 @@ const rules: Rule[] = [
   },
   { name: "non-claude-model", pattern: /\bgrok\b|\bgrok-|\bgpt-|sol-max|\bcomposer-|\bgemini\b|\bcodex\b|\bkimi\b/i },
   { name: "cursor-model-slug", pattern: /claude-[a-z]+-\d-\d-(max|xhigh|high|medium|low)|inherit-parent/ },
+  { name: "banned-model", pattern: /\bfable\b/i },
   { name: "origin-forge", pattern: /\borigin pr\b|\bOrigin\b/ },
   { name: "cursor-cloud-agent", pattern: /\bcloud[- ]agents?\b/i },
   { name: "cursor-frontmatter", pattern: /^(mode|reminder|icon|color): /m },
