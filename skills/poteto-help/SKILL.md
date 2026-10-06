@@ -10,7 +10,7 @@ Answer the user's question about pstack, hand them a prompt they can send, and l
 
 A message that asks for work, such as "use pstack to fix this bug", is not a help question. Read [`poteto-mode`](../poteto-mode/SKILL.md) and do the work under it.
 
-This file maps questions to the skills that hold the answers. Those files own the details. Read the file you route to before you quote it, and trust it when it disagrees with this map. The links here point into the installed plugin, which the user may not be able to open, so give the user the file's public copy: `https://github.com/lucasheriques/pstack/blob/main/` followed by its path.
+This file maps questions to the skills that hold the answers. Those files own the details. Read the file you route to before you quote it, and trust it when it disagrees with this map. The links here point into the installed plugin, which the user may not be able to open, so give the user the file's public copy: `https://github.com/lucasheriques/pstack/blob/main/` followed by its path from the repo root, such as `skills/how/SKILL.md` or `skills/poteto-help/references/prompting.md`.
 
 ## Find out what they need
 
@@ -40,7 +40,7 @@ To let agents merge their own PRs, the user writes a policy at `~/.claude/pstack
 
 `/pstack:poteto-mode` matches the task to a playbook, copies the playbook's steps into the todo list, and runs the other skills as the steps need them. A step it skips stays in the list as `skip: <reason>`. A good prompt states the goal and how to tell it's done. It doesn't list skills, because a hand-written sequence tends to drop or reorder steps the playbook would keep. Read [`references/prompting.md`](references/prompting.md) before you help word one.
 
-`poteto-mode` applies itself when a playbook matches or the task needs rigor, and stays out of casual turns. Say "new task" when the subject changes so it matches a fresh playbook. Its subagents run as `pstack:poteto-agent`. To get the same style from a subagent of your own, spawn it with `subagent_type: "pstack:poteto-agent"`.
+`poteto-mode` applies itself when a playbook matches or the task needs rigor, and stays out of casual turns. Invoke it again when the subject changes, so it matches a fresh playbook. Its subagents run as `pstack:poteto-agent`. To get the same style from a subagent of your own, spawn it with `subagent_type: "pstack:poteto-agent"`.
 
 ## Pick a skill
 
@@ -89,14 +89,14 @@ Not in pstack: `/loop`, `/simplify`, and `/run` are Claude Code built-ins. pstac
 
 ## Playbooks and principles
 
-Playbooks are step lists inside `poteto-mode`, not skills, so they have no slash command. Describing the task picks one, and these phrases name one directly:
+Playbooks are step lists inside `poteto-mode`, not skills, so they have no slash command. Describing the task picks one. Phrases like these name one directly:
 
 - "babysit this pr" or "check on pr 123" runs Babysit. It drives the PR to merge-ready and stops there. It doesn't merge unless the user asks to merge, land, or ship.
-- "land the stack" runs Shipping.
-- "take over this branch" runs Session pickup.
+- An explicit instruction to land or merge, such as "land the stack", runs Shipping.
+- Taking over a prior agent's work, such as "take over this branch", runs Session pickup.
 - "pause safely" runs Pause safely.
 - "full autopilot on this queue" runs Autopilot-full. "stack them, don't ship" runs Autopilot-stack.
-- "run the eval playbook" runs Eval.
+- Testing how a skill or prompt change affects agent behavior runs Eval.
 
 The Playbooks section of [`poteto-mode`](../poteto-mode/SKILL.md) lists every playbook and when it applies. For work that spans phases or stacked PRs, asking for a plan runs the [Multi-phase plan playbook](../poteto-mode/playbooks/multi-phase-plan.md), which writes the plan and doesn't implement it. For a design question, the Prototype playbook or `/pstack:architect` settles it in code first.
 
@@ -106,8 +106,8 @@ Principles are one-rule files that `poteto-mode` reads and cites in its replies.
 
 | Symptom | Fix |
 |---|---|
-| The mode stopped applying after a few turns | Start each task with `/pstack:poteto-mode`, or say "new task" when the subject changes. |
-| A question got treated as the next step of the last task | Say "new task", or say the turn doesn't need the mode. |
+| The mode stopped applying after a few turns | It applies itself only when a playbook matches. Invoke `/pstack:poteto-mode` again at the start of the next task. |
+| A question got treated as the next step of the last task | Say the turn is a new task, or that it doesn't need the mode. |
 | A new model choice had no effect | Restart Claude Code after editing `models.md` or updating the plugin. |
 | Runs cost more than expected | See the cost paragraph under Get set up. |
 | A skill didn't run | Most skills run when the user types them or when `poteto-mode` runs them, and it doesn't run every skill. |
