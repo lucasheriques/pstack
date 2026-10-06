@@ -2,7 +2,7 @@
 // Flags Cursor-isms the Claude Code port must translate, plus the port's own
 // invariants (see translation.md). Run before every commit and after every upstream merge.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const repoRoot = join(import.meta.dir, "..");
 const principlesDirectory = join(repoRoot, "skills/poteto-mode/principles");
@@ -57,6 +57,23 @@ function unresolvedSkillPaths(path: string, text: string): string[] {
     .filter((relative) => !existsSync(join(repoRoot, skillDirectory, relative)));
 }
 
+function unresolvedLinks(path: string, lineText: string): string[] {
+  if (!path.endsWith(".md")) return [];
+  return [...lineText.replace(/`[^`]*`/g, "").matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)]
+    .map(([, target]) => target.replace(/#.*/, ""))
+    .filter((target) => target !== "" && !/^[a-z][a-z0-9+.-]*:/i.test(target) && !/[<*]/.test(target) && /\/|\.md$/.test(target))
+    .filter((target) => !existsSync(join(repoRoot, dirname(path), target)));
+}
+
+function insideFence(text: string): boolean[] {
+  let open = false;
+  return text.split("\n").map((lineText) => {
+    const fence = /^\s*```/.test(lineText);
+    if (fence) open = !open;
+    return open || fence;
+  });
+}
+
 function unresolvedPstackNames(text: string): string[] {
   return [...text.matchAll(/\bpstack:([a-z][a-z-]*[a-z])/g)]
     .map(([, name]) => name)
@@ -70,17 +87,21 @@ function unresolvedPrinciples(text: string): string[] {
 }
 
 export function findingsFor(path: string, text: string): Finding[] {
-  if (exemptFiles.test(path)) return [];
+  const exempt = exemptFiles.test(path);
+  const fenced = insideFence(text);
   return text.split("\n").flatMap((lineText, index) => {
-    const ruleHits = rules
-      .filter((rule) => (rule.paths?.test(path) ?? true) && !rule.exemptPaths?.test(path) && rule.pattern.test(lineText))
-      .map((rule) => rule.name);
-    const referenceHits = [
-      ...unresolvedPrinciples(lineText).map(() => "unresolved-principle"),
-      ...unresolvedSkillPaths(path, lineText).map(() => "unresolved-skill-path"),
-      ...unresolvedPstackNames(lineText).map(() => "unresolved-pstack-name"),
-    ];
-    return [...ruleHits, ...referenceHits].map((rule) => ({
+    const linkHits = fenced[index] ? [] : unresolvedLinks(path, lineText).map(() => "unresolved-link");
+    const portHits = exempt
+      ? []
+      : [
+          ...rules
+            .filter((rule) => (rule.paths?.test(path) ?? true) && !rule.exemptPaths?.test(path) && rule.pattern.test(lineText))
+            .map((rule) => rule.name),
+          ...unresolvedPrinciples(lineText).map(() => "unresolved-principle"),
+          ...unresolvedSkillPaths(path, lineText).map(() => "unresolved-skill-path"),
+          ...unresolvedPstackNames(lineText).map(() => "unresolved-pstack-name"),
+        ];
+    return [...portHits, ...linkHits].map((rule) => ({
       path,
       line: index + 1,
       rule,

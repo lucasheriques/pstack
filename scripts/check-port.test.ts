@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { findingsFor } from "./check-port";
 
 describe("findingsFor", () => {
+  test("ignores a link inside a fenced block", () => {
+    const text = "```md\n[x](../nope/SKILL.md)\n```\n[y](../nope/SKILL.md)";
+    expect(findingsFor("skills/how/SKILL.md", text).map((f) => f.line)).toEqual([4]);
+  });
+
   test.each([
     ["skills/x/SKILL.md", "Write `~/.cursor/rules/pstack-models.mdc`.", "cursor-path"],
     ["skills/x/SKILL.md", "Cursor's built-in plan mode.", "cursor-brand"],
@@ -27,6 +32,10 @@ describe("findingsFor", () => {
     ["skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/references/missing.md`.", "unresolved-skill-path"],
     ["skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/../nope/SKILL.md`.", "unresolved-skill-path"],
     ["skills/x/SKILL.md", 'Spawn `subagent_type: "pstack:no-such-agent"`.', "unresolved-pstack-name"],
+    ["skills/how/SKILL.md", "See [the missing one](../nope/SKILL.md).", "unresolved-link"],
+    ["skills/poteto-mode/principles/principle-laziness-protocol.md", "Distinct from [x](../principle-build-the-lever/SKILL.md).", "unresolved-link"],
+    ["skills/how/SKILL.md", 'See [x](../nope/SKILL.md "title").', "unresolved-link"],
+    ["README.md", "See [x](skills/nope/SKILL.md).", "unresolved-link"],
     ["skills/poteto-mode/references/models.md", "| interrogate reviewers | `opus`, `fable` |", "fable-model"],
     ["skills/x/SKILL.md", 'Spawn with `model: "fable"`.', "fable-model"],
     [".claude-plugin/plugin.json", '  "version": "0.15.4",', "plugin-version"],
@@ -50,6 +59,12 @@ describe("findingsFor", () => {
     ["a pstack agent", "skills/x/SKILL.md", 'Use `subagent_type: "pstack:read-only"`.'],
     ["a pstack skill", "README.md", "Run /pstack:poteto-mode."],
     ["a pstack skill in prose", "skills/x/SKILL.md", "Route through `pstack:poteto-mode`."],
+    ["a link to a sibling skill", "skills/how/SKILL.md", "See [teach](../teach/SKILL.md)."],
+    ["a link in inline code", "skills/how/SKILL.md", "Write `[x](../nope/SKILL.md)` like so."],
+    ["a link with an anchor", "skills/how/SKILL.md", "See [teach](../teach/SKILL.md#usage)."],
+    ["a web link", "skills/how/SKILL.md", "See [docs](https://example.com/a/b.md)."],
+    ["an in-page anchor", "skills/how/SKILL.md", "See [below](#step-1)."],
+    ["a principle link", "skills/poteto-mode/principles/principle-laziness-protocol.md", "See [x](./principle-build-the-lever.md)."],
     ["a version field elsewhere", "skills/poteto-mode/scripts/package.json", '  "version": "1.0.0",'],
   ])("allows %s", (_, path, line) => {
     expect(findingsFor(path, line)).toEqual([]);
