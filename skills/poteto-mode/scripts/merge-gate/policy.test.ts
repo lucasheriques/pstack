@@ -79,6 +79,9 @@ describe("parsePolicy", () => {
 describe("merge-policy.example.json", () => {
   it("loads as a valid policy", async () => {
     const policy = await loadPolicy(join(import.meta.dir, "merge-policy.example.json"));
-    expect(policy.repos.has("your-name/your-repo")).toBe(true);
+    const repo = repoPolicy(policy, { owner: "your-name", repo: "your-repo" });
+    const needsHuman = (path: string) => repo?.humanOnly.some((glob) => new Bun.Glob(glob.toLowerCase()).match(path));
+    expect([".github/ci.yml", "src/billing/charge.ts", "payment/handler.ts", "db/migrations/1.sql"].map(needsHuman)).toEqual([true, true, true, true]);
+    expect(needsHuman("src/index.ts")).toBe(false);
   });
 });

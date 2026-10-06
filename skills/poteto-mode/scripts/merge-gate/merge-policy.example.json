@@ -1,6 +1,6 @@
 {
   "defaults": {
-    "humanOnly": [".github/**", "**/.env*", "**/Dockerfile*", "**/infra/**", "**/auth/**", "**/*billing*", "**/*payment*"]
+    "humanOnly": [".github/**", "**/.env*", "**/Dockerfile*", "**/infra/**", "**/auth/**", "**/*billing*", "**/*billing*/**", "**/*payment*", "**/*payment*/**"]
   },
   "repos": {
     "your-name/your-repo": {
