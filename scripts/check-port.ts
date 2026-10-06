@@ -2,7 +2,7 @@
 // Flags Cursor-isms the Claude Code port must translate, plus the port's own
 // invariants (see translation.md). Run before every commit and after every upstream merge.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const repoRoot = join(import.meta.dir, "..");
 const principlesDirectory = join(repoRoot, "skills/poteto-mode/principles");
@@ -57,6 +57,14 @@ function unresolvedSkillPaths(path: string, text: string): string[] {
     .filter((relative) => !existsSync(join(repoRoot, skillDirectory, relative)));
 }
 
+function unresolvedLinks(path: string, text: string): string[] {
+  if (!path.endsWith(".md")) return [];
+  return [...text.matchAll(/\]\(([^)\s]+)\)/g)]
+    .map(([, target]) => target.replace(/#.*/, ""))
+    .filter((target) => target !== "" && !/^[a-z][a-z0-9+.-]*:/i.test(target) && !/[<*]/.test(target) && /\/|\.md$/.test(target))
+    .filter((target) => !existsSync(join(repoRoot, dirname(path), target)));
+}
+
 function unresolvedPstackNames(text: string): string[] {
   return [...text.matchAll(/\bpstack:([a-z][a-z-]*[a-z])/g)]
     .map(([, name]) => name)
@@ -79,6 +87,7 @@ export function findingsFor(path: string, text: string): Finding[] {
       ...unresolvedPrinciples(lineText).map(() => "unresolved-principle"),
       ...unresolvedSkillPaths(path, lineText).map(() => "unresolved-skill-path"),
       ...unresolvedPstackNames(lineText).map(() => "unresolved-pstack-name"),
+      ...unresolvedLinks(path, lineText).map(() => "unresolved-link"),
     ];
     return [...ruleHits, ...referenceHits].map((rule) => ({
       path,

@@ -38,6 +38,7 @@ You can also call the other skills directly:
 | `bro` | you want the last message restated in plain language |
 | `correct` | agents keep repeating the same mistake in a repo and each one should become impossible |
 | `benchmark-checklist` | you ran a benchmark and want the measurement vetted before you report it |
+| `poteto-help` | you're new to pstack or unsure which skill fits. Type `/pstack:poteto-help` with a question |
 | `blast-radius` | a small-looking change might break something else |
 | `architect` | code crosses a function boundary and the caller's shape should be settled first |
 | `arena` | you want several parallel attempts at the same thing, then the best parts of each |
@@ -72,7 +73,7 @@ Edit it for your repos. Both `defaults.humanOnly` and `repos` are required, and 
 - **Claude models only.** Roles map to `sonnet` and `opus` in [`skills/poteto-mode/references/models.md`](skills/poteto-mode/references/models.md). Edit that file to change a role, and fork the repo to keep the edit, because `claude plugin update` overwrites the installed copy. It replaces `/setup-pstack`.
 - **Harness.** `Task` becomes the Agent tool, `readonly` becomes the `pstack:read-only` agent, `/deslop` becomes `/simplify`, `control-ui` and `control-cli` become `claude-in-chrome` and the `run` skill, and the Origin forge is gone in favor of `gh` and `gh stack`.
 - **My house rules.** A few defaults follow my own workflow instead of poteto's: `interrogate` gates every PR, agents ready their own PRs, and they merge only through `merge-gate` under a policy file you keep outside git (`~/.claude/pstack/merge-policy.json`). Comment cleanup never touches pre-existing comments.
-- **Not shipped.** benny, make-bot-ui, setup-pstack, poteto-help, and the guide. They depend on Cursor.
+- **Not shipped.** benny, make-bot-ui, setup-pstack, and the guide. They depend on Cursor.
 
 The full mapping is in [`.claude/skills/sync-upstream/references/translation.md`](.claude/skills/sync-upstream/references/translation.md).
 
