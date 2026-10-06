@@ -1,0 +1,15 @@
+{
+  "defaults": {
+    "humanOnly": [".github/**", "**/.env*", "**/Dockerfile*", "**/infra/**", "**/auth/**", "**/*billing*", "**/*billing*/**", "**/*payment*", "**/*payment*/**"]
+  },
+  "repos": {
+    "your-name/your-repo": {
+      "humanOnly": ["db/migrations/**"],
+      "requireHumanApprovalOnHead": false,
+      "mergeCommitBranches": ["sync/*"]
+    },
+    "your-org/*": {
+      "requireHumanApprovalOnHead": true
+    }
+  }
+}

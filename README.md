@@ -13,6 +13,8 @@ claude plugin install pstack@pstack
 
 To update, run `claude plugin marketplace update pstack`, then `claude plugin update pstack@pstack`. The plugin has no version number on purpose, so every commit to `main` counts as a new release (see `translation.md`).
 
+Requirements: Claude Code, plus `gh` for anything touching PRs. Stacked PRs need the [`gh stack`](https://github.com/github/gh-stack) extension (`gh extension install github/gh-stack`). The helper scripts and `merge-gate` run on [`bun`](https://bun.sh).
+
 ## Use
 
 `poteto-mode` is the entry point. It switches on by itself for engineering work that matches a playbook or needs rigor, or you can call it with `/pstack:poteto-mode <task>`. It matches the task to one of its playbooks (bug fix, feature, refactoring, perf, investigation, babysit, shipping, multi-phase plan, autonomous run, and more), copies the steps into a todo list, and routes to the other skills as the steps need them.
@@ -53,9 +55,21 @@ You can also call the other skills directly:
 
 The 23 principles live in `skills/poteto-mode/principles/`. poteto-mode reads them on demand instead of loading them into every session.
 
+## Letting agents merge
+
+By default agents open PRs ready for review and never merge. To let them merge their own PRs, write a policy outside git at `~/.claude/pstack/merge-policy.json`. Without that file `merge-gate` refuses every merge.
+
+```bash
+mkdir -p ~/.claude/pstack && [ -e ~/.claude/pstack/merge-policy.json ] || curl -fsSL https://raw.githubusercontent.com/lucasheriques/pstack/main/skills/poteto-mode/scripts/merge-gate/merge-policy.example.json -o ~/.claude/pstack/merge-policy.json
+```
+
+Edit it for your repos. Both `defaults.humanOnly` and `repos` are required, and a repo with no entry is refused. `humanOnly` globs mark paths that need a human's approval on the exact head commit before the agent merges. The approver must be a collaborator other than the PR author, so on a solo repo those paths mean you merge them yourself. `requireHumanApprovalOnHead` asks for that approval on every PR in the repo. `mergeCommitBranches` lists branch globs that merge with a merge commit instead of a squash.
+
+`merge-gate` also refuses unless `gh` is signed in as the PR author, the PR targets the default branch (so upper PRs in a stack wait for their turn), and the head has passing checks. A repo with no CI is refused with `checks-missing`.
+
 ## Differences from upstream
 
-- **Claude models only.** Roles map to `sonnet` and `opus` in [`skills/poteto-mode/references/models.md`](skills/poteto-mode/references/models.md). Edit that file to change a role. It replaces `/setup-pstack`.
+- **Claude models only.** Roles map to `sonnet` and `opus` in [`skills/poteto-mode/references/models.md`](skills/poteto-mode/references/models.md). Edit that file to change a role, and fork the repo to keep the edit, because `claude plugin update` overwrites the installed copy. It replaces `/setup-pstack`.
 - **Harness.** `Task` becomes the Agent tool, `readonly` becomes the `pstack:read-only` agent, `/deslop` becomes `/simplify`, `control-ui` and `control-cli` become `claude-in-chrome` and the `run` skill, and the Origin forge is gone in favor of `gh` and `gh stack`.
 - **My house rules.** A few defaults follow my own workflow instead of poteto's: `interrogate` gates every PR, agents ready their own PRs, and they merge only through `merge-gate` under a policy file you keep outside git (`~/.claude/pstack/merge-policy.json`). Comment cleanup never touches pre-existing comments.
 - **Not shipped.** benny, make-bot-ui, setup-pstack, poteto-help, and the guide. They depend on Cursor.
