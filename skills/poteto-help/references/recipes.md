@@ -6,7 +6,7 @@ Swap in the real paths, skills, and done checks. Informal wording works.
 
 - `/pstack:poteto-mode read <thread>. restate the underlying issue in your own words, in plain english.`
 - `/pstack:poteto-mode investigate why <symptom>. give me what we know, what data you used, and your best hypotheses. don't change any code yet.`
-- `use /pstack:how to understand <subsystem>. then use /pstack:why to find out why it broke recently.`
+- `/pstack:poteto-mode understand <subsystem> with how, then find out with why why it broke recently.`
 - `/pstack:recall my work on <topic> from last week, then read <issue>.`
 - `/pstack:teach me why you implemented it this way and not <other way>. what did you trade off?`
 - `/pstack:poteto-mode take over this branch. read the decision log, find what's done, and continue. don't redo finished work.`
@@ -25,7 +25,7 @@ Swap in the real paths, skills, and done checks. Informal wording works.
 - `/pstack:poteto-mode prototype a few options for <feature>. take screenshots or videos for me to compare.`
 - `/pstack:poteto-mode we need <feature>. /pstack:architect it first, and answer open questions with prototypes. let me review before proceeding.`
 - `/pstack:poteto-mode write a tutorial for how i would use <new package> first. then /pstack:teach me why it beats the current one.`
-- `ask /pstack:arena for a second opinion on this thread and our approach.`
+- `/pstack:poteto-mode get a second opinion from arena on this thread and our approach.`
 - `/pstack:poteto-mode turn this design into a plan. small verifiable PRs, each with its own verification steps.`
 - `/pstack:poteto-mode plan the migration of <library> to <target>. small verifiable PRs. the result must match the original exactly, bugs included.`
 

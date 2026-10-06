@@ -32,7 +32,7 @@ If the project has no `verify-*` skill or other app harness, agents have no scri
 
 Installing changes nothing until a skill runs. `poteto-mode` also switches on by itself for engineering work that matches a playbook. Offer to word their first prompt with them, per [`references/prompting.md`](references/prompting.md).
 
-To change which model a role uses, edit [`poteto-mode/references/models.md`](../poteto-mode/references/models.md). Roles map to `opus`, `sonnet`, or `inherit`. If cost is the worry, say where the tokens go. pstack spends extra tokens on subagents and review panels. A role set to `sonnet` costs less than `opus`, and a shorter panel list runs fewer subagents, one for each entry. Save `/pstack:poteto-mode` for work that needs rigor.
+To change which model a role uses, edit [`poteto-mode/references/models.md`](../poteto-mode/references/models.md). `claude plugin update` overwrites the installed copy, so fork the repo and install from the fork to keep an edit. Roles map to `opus`, `sonnet`, or `inherit`. If cost is the worry, say where the tokens go. pstack spends extra tokens on subagents and review panels. A role set to `sonnet` costs less than `opus`, and a shorter panel list runs fewer subagents, one for each entry. Save `/pstack:poteto-mode` for work that needs rigor.
 
 To let agents merge their own PRs, the user writes a policy at `~/.claude/pstack/merge-policy.json`. The README's "Letting agents merge" section has the format. Without it agents open ready PRs and never merge.
 
@@ -107,12 +107,12 @@ Principles are one-rule files that `poteto-mode` reads and cites in its replies.
 | Symptom | Fix |
 |---|---|
 | The mode stopped applying after a few turns | It applies itself only when a playbook matches. Invoke `/pstack:poteto-mode` again at the start of the next task. |
-| A question got treated as the next step of the last task | Say the turn is a new task, or that it doesn't need the mode. |
-| A new model choice had no effect | Restart Claude Code after editing `models.md` or updating the plugin. |
+| A question got treated as the next step of the last task | Invoke `/pstack:poteto-mode` again for the new subject, or say the turn doesn't need the mode. |
+| A `models.md` edit disappeared | `claude plugin update` overwrites the installed copy. Fork the repo and install from the fork to keep an edit. |
 | Runs cost more than expected | See the cost paragraph under Get set up. |
 | A skill didn't run | Most skills run when the user types them or when `poteto-mode` runs them, and it doesn't run every skill. |
 | Parallel agents overwrote each other | Give each agent its own worktree, with `isolation: "worktree"`. |
-| An overnight run moved but finished nothing | `/loop` needs a check that can pass or fail, not a duration. |
+| An overnight run moved but finished nothing | Give `/loop` a stop condition that can pass or fail, not just an interval. |
 | The reply claims success from a green build | Ask for the real command, flow, stored value, or profile. That's the prove-it-works principle. |
 | An agent can't merge | `merge-gate` refuses without a policy file, a passing CI run, and a repo entry. Its verdict names the reason. |
 
