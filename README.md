@@ -57,7 +57,15 @@ The 23 principles live in `skills/poteto-mode/principles/`. poteto-mode reads th
 
 ## Letting agents merge
 
-By default agents open PRs ready for review and never merge. To let them merge their own PRs, write a policy at `~/.claude/pstack/merge-policy.json`, outside git on purpose. Without that file `merge-gate` refuses every merge. Start from [`merge-policy.example.json`](skills/poteto-mode/scripts/merge-gate/merge-policy.example.json). A repo with no entry is refused. `humanOnly` globs mark paths whose PRs only you merge. `requireHumanApprovalOnHead` demands a human approval on the exact head commit, and `mergeCommitBranches` lists branches that merge with a merge commit instead of squash. `merge-gate` also refuses a PR with failing, pending, or missing checks, so the repo needs CI.
+By default agents open PRs ready for review and never merge. To let them merge their own PRs, write a policy outside git at `~/.claude/pstack/merge-policy.json`. Without that file `merge-gate` refuses every merge.
+
+```bash
+mkdir -p ~/.claude/pstack && curl -fsSL https://raw.githubusercontent.com/lucasheriques/pstack/main/skills/poteto-mode/scripts/merge-gate/merge-policy.example.json -o ~/.claude/pstack/merge-policy.json
+```
+
+Edit it for your repos. Both `defaults.humanOnly` and `repos` are required, and a repo with no entry is refused. `humanOnly` globs mark paths that need a human's approval on the exact head commit before the agent merges. The approver must be a collaborator other than the PR author, so on a solo repo those paths mean you merge them yourself. `requireHumanApprovalOnHead` asks for that approval on every PR in the repo. `mergeCommitBranches` lists branch globs that merge with a merge commit instead of a squash.
+
+`merge-gate` also refuses unless `gh` is signed in as the PR author, the PR targets the default branch (so upper PRs in a stack wait for their turn), and the head has passing checks. A repo with no CI is refused with `checks-missing`.
 
 ## Differences from upstream
 
