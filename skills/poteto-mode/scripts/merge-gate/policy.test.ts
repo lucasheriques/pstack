@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { PolicyError, type RepoPolicy, parsePolicy, repoPolicy } from "./policy.ts";
+import { join } from "node:path";
+import { PolicyError, type RepoPolicy, loadPolicy, parsePolicy, repoPolicy } from "./policy.ts";
 
 const valid = {
   defaults: { humanOnly: [".github/**"] },
@@ -72,5 +73,12 @@ describe("parsePolicy", () => {
     ["keys that differ only by case", { ...valid, repos: { "acme/app": {}, "Acme/App": {} } }],
   ])("rejects %s", (_name, value) => {
     expect(() => parsePolicy(value)).toThrow(PolicyError);
+  });
+});
+
+describe("merge-policy.example.json", () => {
+  it("loads as a valid policy", async () => {
+    const policy = await loadPolicy(join(import.meta.dir, "merge-policy.example.json"));
+    expect(policy.repos.has("your-name/your-repo")).toBe(true);
   });
 });
