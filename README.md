@@ -34,6 +34,8 @@ You can also call the other skills directly:
 | `teach` | you want to understand a change or subsystem, built up diagram by diagram |
 | `recall` | you're resuming work and want your recent context rebuilt from past sessions |
 | `bro` | you want the last message restated in plain language |
+| `correct` | agents keep repeating the same mistake in a repo and each one should become impossible |
+| `benchmark-checklist` | you ran a benchmark and want the measurement vetted before you report it |
 | `blast-radius` | a small-looking change might break something else |
 | `architect` | code crosses a function boundary and the caller's shape should be settled first |
 | `arena` | you want several parallel attempts at the same thing, then the best parts of each |
