@@ -11,7 +11,7 @@ import type {
   ReviewState,
 } from "./decide.ts";
 
-/** What GitHub reports after `gh pr merge`, whatever the command's exit code said. */
+/** What GitHub reports after the merge request, whatever the request itself said. */
 export type MergeResult =
   | { readonly kind: "merged"; readonly commit: string | null }
   | { readonly kind: "failed"; readonly detail: string }
@@ -68,6 +68,13 @@ query MergeGateOutcome($owner: String!, $repo: String!, $pr: Int!) {
   }
 }
 `;
+/** GitHub refuses `gh pr merge` for a PR in a native stack and wants its merge-async endpoint. */
+const STACKED = /part of a stack/;
+/** Keeps a stuck job well inside an agent's two-minute command timeout. */
+const MERGE_POLL_MS = 2_000;
+const MAX_MERGE_POLLS = 30;
+/** Only a 4xx proves GitHub queued nothing; a 5xx, a timeout or a garbled body may hide a queued job. */
+const REJECTED = /\(HTTP 4\d\d\)/;
 const FILES_PER_PAGE = 100;
 /** GitHub's pull request files endpoint stops at 3000 files. */
 const MAX_FILE_PAGES = 30;
@@ -78,6 +85,12 @@ const REVIEW_STATES = [
   "CHANGES_REQUESTED",
   "DISMISSED",
 ] as const satisfies readonly ReviewState[];
+
+/** How a merge request ended before the read-back; `pending` means GitHub may still merge it. */
+interface Attempt {
+  readonly kind: "failed" | "pending";
+  readonly detail: string;
+}
 
 interface CommandResult {
   readonly code: number;
@@ -223,6 +236,22 @@ function parseFile(value: unknown, index: number): ChangedFile {
   };
 }
 
+interface MergeJob {
+  readonly status: string;
+  readonly uuid: string | null;
+  readonly message: string;
+}
+
+function parseMergeJob(value: unknown): MergeJob {
+  const job = record(value, "merge-async");
+  const details = job.details === undefined ? {} : record(job.details, "merge-async.details");
+  return {
+    status: text(job.status, "merge-async.status"),
+    uuid: details.uuid === undefined ? null : text(details.uuid, "merge-async.details.uuid"),
+    message: typeof details.message === "string" ? details.message : JSON.stringify(details),
+  };
+}
+
 export class GhGateGitHub implements GateGitHub {
   private readonly reader = new GhGitHubReader();
 
@@ -290,23 +319,72 @@ export class GhGateGitHub implements GateGitHub {
       head,
       method === "merge" ? "--merge" : "--squash",
     ]);
+    const attempt: Attempt =
+      result.code !== 0 && STACKED.test(result.stderr)
+        ? await this.mergeAsync(pr, head, method)
+        : { kind: "failed", detail: `gh pr merge exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}` };
     let state: string;
-    let merged: MergeResult | null = null;
     try {
       const after = record(repository(await graphql(OUTCOME_QUERY, pr)).pullRequest, "pullRequest");
       state = text(after.state, "state");
       if (state === "MERGED" && optionalText(after.mergedAt, "mergedAt") !== null)
-        merged = { kind: "merged", commit: oid(after.mergeCommit, "mergeCommit") };
+        return { kind: "merged", commit: oid(after.mergeCommit, "mergeCommit") };
     } catch {
       return {
         kind: "unverified",
-        detail: `gh pr merge exited ${result.code}, then reading the PR back failed, so it may have merged. Rerun merge-gate without --merge.`,
+        detail: `${attempt.detail}, then reading the PR back failed, so it may have merged. Rerun merge-gate without --merge.`,
       };
     }
-    if (merged !== null) return merged;
-    return {
-      kind: "failed",
-      detail: `gh pr merge exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}; PR is ${state}`,
-    };
+    return attempt.kind === "pending"
+      ? {
+          kind: "unverified",
+          detail: `${attempt.detail}; PR is ${state}, so it may still merge. Wait for gh pr view to show it settled before rerunning merge-gate --merge.`,
+        }
+      : { kind: "failed", detail: `${attempt.detail}; PR is ${state}` };
+  }
+
+  private async mergeAsync(pr: W.PrContext, head: string, method: MergeMethod): Promise<Attempt> {
+    const endpoint = `repos/${pr.owner}/${pr.repo}/pulls/${pr.number}/merge-async`;
+    let job: MergeJob;
+    try {
+      job = parseMergeJob(
+        await ghJson([
+          "api",
+          endpoint,
+          "-X",
+          "PUT",
+          "-f",
+          `sha=${head}`,
+          "-f",
+          `merge_method=${method}`,
+          "-f",
+          "merge_action=direct_merge",
+        ])
+      );
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      return {
+        kind: REJECTED.test(error.message) ? "failed" : "pending",
+        detail: `merge-async request failed: ${error.message}`,
+      };
+    }
+    const { uuid } = job;
+    const name = uuid === null ? "merge-async" : `merge-async job ${uuid}`;
+    for (let poll = 0; ; poll += 1) {
+      if (job.status === "merged") return { kind: "pending", detail: `${name} reported merged` };
+      if (job.status === "failed") return { kind: "failed", detail: `${name} failed: ${firstLine(job.message)}` };
+      if (job.status !== "pending")
+        return { kind: "pending", detail: `${name} reported unknown status ${job.status}` };
+      if (uuid === null) return { kind: "pending", detail: "merge-async queued a job without a uuid" };
+      if (poll === MAX_MERGE_POLLS)
+        return { kind: "pending", detail: `${name} still pending after ${MAX_MERGE_POLLS} polls` };
+      if (poll > 0) await Bun.sleep(MERGE_POLL_MS);
+      try {
+        job = parseMergeJob(await ghJson(["api", `${endpoint}/${uuid}`]));
+      } catch (error) {
+        if (!(error instanceof GitHubError)) throw error;
+        return { kind: "pending", detail: `polling ${name} failed: ${error.message}` };
+      }
+    }
   }
 }
