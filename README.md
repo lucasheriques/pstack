@@ -4,6 +4,14 @@ This is an unofficial port of [pstack](https://github.com/cursor/plugins/tree/ma
 
 Everything that makes pstack good is poteto's work: the playbooks, the principles, the review panels, and the idea behind them ("if you want to go fast, go deep first"). This repo only ports it. It translates the skills from Cursor's tools, models, and paths to Claude Code's, and merges upstream changes as they land. For the original, its docs, and to credit or support the author, go to [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack).
 
+## What it looks like
+
+I ran the gate on this repo's own PRs. It found that my example merge policy listed `**/*billing*`, a glob that matches a file named billing and skips `src/billing/charge.ts`. Anyone who copied the example would have let an agent merge billing changes with no human in the loop. I fixed it before merge and added a test that checks real paths.
+
+That is the loop `poteto-mode` runs on any task: pick a playbook, do the work, prove it, then let two models try to break it.
+
+You describe the task. `poteto-mode` picks one of 23 playbooks (bug fix, feature, refactor, perf, babysit a PR, and more), turns its steps into a todo list, and calls the other skills when a step needs them. Before an agent opens a PR, `interrogate` runs two models against the diff and a lead judges each finding against the source. Agents merge only through `merge-gate`, which reads a policy file you keep outside git.
+
 ## Install
 
 ```bash
