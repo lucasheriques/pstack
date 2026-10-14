@@ -8,12 +8,20 @@ scratch=$(mktemp -d)
 trap 'git -C "$repo" worktree remove --force "$scratch/upstream" 2>/dev/null || true; rm -rf "$scratch"' EXIT
 
 # The merge model needs `upstream` to advance linearly on the remote, so start from origin's tip.
-git -C "$repo" fetch -q origin upstream
+git -C "$repo" fetch -q origin upstream main
 if ! git -C "$repo" merge-base --is-ancestor upstream origin/upstream; then
   echo "local upstream has commits origin/upstream lacks; push or reset it first" >&2
   exit 1
 fi
 git -C "$repo" branch -f upstream origin/upstream
+
+# A squash-merged sync drops `upstream` from main's ancestry, and the next merge
+# then re-conflicts on every line an earlier sync resolved.
+if ! git -C "$repo" merge-base --is-ancestor upstream origin/main; then
+  previous=$(git -C "$repo" rev-parse --short upstream)
+  echo "warning: main lacks upstream@$previous in its ancestry, so an earlier sync was squashed." >&2
+  echo "  If main's content already carries it, restore the ancestry before merging: git merge -s ours $previous" >&2
+fi
 
 last_synced=$(git -C "$repo" log -1 --format=%s upstream | grep -oE '@[0-9a-f]+$' | tr -d @)
 git clone -q --depth 1 --filter=blob:none --sparse https://github.com/cursor/plugins "$scratch/plugins"

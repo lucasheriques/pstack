@@ -10,10 +10,10 @@ This repo is two branches. `upstream` is a verbatim mirror of `cursor/plugins/ps
 ## Steps
 
 1. **Branch.** From a worktree off `main`, create `sync/upstream-<date>`.
-2. **Mirror.** Run `scripts/sync-upstream.sh`. It fast-forwards `upstream` from `origin`, commits the new snapshot, and pushes it, or reports that nothing changed. If nothing changed, stop and say so.
+2. **Mirror.** Run `scripts/sync-upstream.sh`. It fast-forwards `upstream` from `origin`, commits the new snapshot, and pushes it, or reports that nothing changed. If nothing changed, stop and say so. If it warns that `main` lacks the previous mirror, an earlier sync was squashed. Confirm `main`'s content carries that mirror, then run the `git merge -s ours` it prints before step 4, so the merge base is the previous mirror rather than an older one.
 3. **Read why.** `gh api --paginate 'repos/cursor/plugins/commits?path=pstack&per_page=100'` lists upstream's commits. Read down to the previously synced SHA, which the script printed. Read the messages of the new ones so the merge preserves poteto's intent, not just the text.
 4. **Merge.** `git merge upstream`. Resolve each conflict per `references/translation.md`: take upstream's new substance and keep the port's translation of it. Resolve by structure too:
-   - A file the port deleted (`automations/`, `docs/`, `assets/`, `.cursor-plugin/`, `skills/make-bot-ui/`, `skills/setup-pstack/`) stays deleted. Before discarding upstream's edit, check whether it carries a rule that belongs somewhere the port kept. A new `setup-pstack` role means a new row in `skills/poteto-mode/references/models.md`.
+   - A file the port deleted (`automations/`, `docs/`, `assets/`, `.cursor-plugin/`, `skills/make-bot-ui/`, `skills/setup-pstack/`, the root `plugin.json`) stays deleted. Before discarding upstream's edit, check whether it carries a rule that belongs somewhere the port kept. A new `setup-pstack` role means a new row in `skills/poteto-mode/references/models.md`.
    - `skills/poteto-help/` is rewritten for Claude Code, not mirrored. When upstream changes its skill map, playbook phrases, or troubleshooting table, carry the substance across and keep the port's own setup, install, and merge-policy sections.
    - `README.md` is the port's own. Keep ours, and add any new skill to its table.
    - A new `skills/principle-*/SKILL.md` moves to `skills/poteto-mode/principles/principle-*.md`, rewriting its relative links: `../principle-x/SKILL.md` becomes `./principle-x.md`, and `../<skill>/` becomes `../../<skill>/`.
@@ -22,7 +22,7 @@ This repo is two branches. `upstream` is a verbatim mirror of `cursor/plugins/ps
 6. **Verify.**
    - `bun test ./scripts/check-port.test.ts`
    - `cd skills/poteto-mode/scripts && bun test orch watch-pr`
-   - `claude plugin validate .`. Its `No version specified` warning is expected (see Deliberate departures).
+   - `claude plugin validate .`. Its `No version specified` warning is expected (see Deliberate departures), and so is its warning that the root `CLAUDE.md` is not loaded as plugin context, since that file is for contributors to this repo.
    - `claude -p --plugin-dir . "/pstack:poteto-mode quote the sentence that says where sibling skills live"` must print an absolute path.
    - `claude -p --plugin-dir . "Spawn a pstack:poteto-agent that quotes the same sentence from its preloaded skill"` must print the same absolute path.
    - `claude -p --plugin-dir . "Spawn a pstack:read-only agent and ask it to create a file named probe.txt"` must report that it refused or could not.

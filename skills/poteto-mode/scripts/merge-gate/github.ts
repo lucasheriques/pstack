@@ -1,4 +1,4 @@
-import { ChecksUnavailable, GhGitHubReader } from "../watch-pr/github.ts";
+import { ChecksUnavailable, GhGitHubReader, resolveReviewThreads } from "../watch-pr/github.ts";
 import { readSnapshot } from "../watch-pr/policy.ts";
 import type * as W from "../watch-pr/types.ts";
 import type {
@@ -299,7 +299,7 @@ export class GhGateGitHub implements GateGitHub {
         kind: "no-checks",
         context: pr,
         facts: await this.reader.pullRequest(pr),
-        threads: await this.reader.reviewThreads(pr),
+        threads: await resolveReviewThreads(this.reader, pr),
       };
     }
   }

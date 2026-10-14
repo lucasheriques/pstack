@@ -62,7 +62,15 @@ function git({
   args: readonly string[];
   repo: string;
 }): string {
-  const result = Bun.spawnSync(["git", "-C", repo, ...args]);
+  // Fixture commits must not depend on the user's signing agent.
+  const result = Bun.spawnSync([
+    "git",
+    "-c",
+    "commit.gpgsign=false",
+    "-C",
+    repo,
+    ...args,
+  ]);
   if (result.exitCode !== 0) {
     throw new Error(
       `git ${args.join(" ")} failed: ${result.stderr.toString()}`
@@ -74,76 +82,105 @@ function git({
 async function makeGitStack(directory: string): Promise<{
   readonly repo: string;
   readonly mergedSha: string;
-  readonly queuedSha: string;
+  readonly closedSha: string;
   readonly openSha: string;
+  readonly draftSha: string;
 }> {
   const repo = join(directory, "repo");
   await mkdir(repo);
   git({ repo, args: ["init", "--initial-branch=main"] });
   git({ repo, args: ["config", "user.name", "Orch Test"] });
   git({ repo, args: ["config", "user.email", "orch@example.com"] });
-  git({ repo, args: ["config", "commit.gpgsign", "false"] });
   await writeFile(join(repo, "main.txt"), "main\n");
   git({ repo, args: ["add", "."] });
   git({ repo, args: ["commit", "-m", "main"] });
 
-  const branches = ["stack/merged", "stack/queued", "stack/open"];
+  const branches = [
+    "stack/merged",
+    "stack/closed",
+    "stack/open",
+    "stack/draft",
+  ];
   for (const [index, branch] of branches.entries()) {
     git({ repo, args: ["checkout", "-b", branch] });
     await writeFile(join(repo, `stack-${index}.txt`), `${branch}\n`);
     git({ repo, args: ["add", "."] });
     git({ repo, args: ["commit", "-m", branch] });
   }
+  git({ repo, args: ["checkout", "stack/open"] });
 
   return {
     repo,
     mergedSha: git({ repo, args: ["rev-parse", "stack/merged"] }),
-    queuedSha: git({ repo, args: ["rev-parse", "stack/queued"] }),
+    closedSha: git({ repo, args: ["rev-parse", "stack/closed"] }),
     openSha: git({ repo, args: ["rev-parse", "stack/open"] }),
+    draftSha: git({ repo, args: ["rev-parse", "stack/draft"] }),
   };
 }
 
-function ghStackBranch({
-  name,
-  pr,
+type FixtureState = "open" | "draft" | "merged" | "closed";
+
+function ghRow({
+  number,
   state,
+  head,
+  base,
 }: {
-  name: string;
-  pr: number;
-  state: string;
+  number: number;
+  state: FixtureState;
+  head: string;
+  base: string;
 }): Record<string, unknown> {
   return {
-    name,
-    isCurrent: false,
-    isMerged: state === "MERGED",
-    isQueued: state === "QUEUED",
-    needsRebase: false,
-    pr: { number: pr, url: `https://github.com/o/r/pull/${pr}`, state },
+    number,
+    state: state === "draft" ? "OPEN" : state.toUpperCase(),
+    headRefName: head,
+    baseRefName: base,
   };
+}
+
+function ghRows(
+  prs: readonly {
+    number: number;
+    state: FixtureState;
+    head: string;
+    base: string;
+  }[]
+): string {
+  return JSON.stringify(prs.map(ghRow));
 }
 
 async function withFakeGh<T>({
   directory,
   operation,
-  output,
-  failWith,
+  currentRows,
 }: {
   directory: string;
   operation: () => Promise<T>;
-  output?: string;
-  failWith?: string;
+  currentRows?: string;
 }): Promise<T> {
   const bin = join(directory, "bin");
   const outputPath = join(directory, "gh-output.txt");
-  await mkdir(bin);
-  await writeFile(outputPath, output ?? "");
-  const gh = join(bin, "gh");
-  const respond =
-    failWith !== undefined
-      ? `printf '%s\\n' '${failWith}' >&2\n    exit 1`
-      : `cat "${outputPath}"`;
+  await mkdir(bin, { recursive: true });
   await writeFile(
-    gh,
+    outputPath,
+    `${
+      currentRows ??
+      ghRows([
+        {
+          number: 11,
+          state: "open",
+          head: "stack/open",
+          base: "stack/closed",
+        },
+      ])
+    }\n`
+  );
+  const list = (filter: string, branch: string): string =>
+    `pr list ${filter} ${branch} --state all --json number,state,headRefName,baseRefName`;
+  const fake = join(bin, "gh");
+  await writeFile(
+    fake,
     `#!/usr/bin/env bash
 set -euo pipefail
 if [ "$(pwd -P)" != "${realpathSync(join(directory, "repo"))}" ]; then
@@ -151,8 +188,28 @@ if [ "$(pwd -P)" != "${realpathSync(join(directory, "repo"))}" ]; then
   exit 2
 fi
 case "$*" in
-  "stack view --json")
-    ${respond}
+  "${list("--head", "stack/open")}")
+    cat "${outputPath}"
+    ;;
+  "${list("--head", "stack/closed")}")
+    printf '%s\\n' '${ghRows([{ number: 13, state: "closed", head: "stack/closed", base: "stack/merged" }])}'
+    ;;
+  "${list("--head", "stack/merged")}")
+    printf '%s\\n' '${ghRows([{ number: 10, state: "merged", head: "stack/merged", base: "main" }])}'
+    ;;
+  "${list("--base", "stack/open")}")
+    printf '%s\\n' '${ghRows([
+      { number: 14, state: "draft", head: "stack/draft", base: "stack/open" },
+      {
+        number: 15,
+        state: "closed",
+        head: "stack/abandoned",
+        base: "stack/open",
+      },
+    ])}'
+    ;;
+  "${list("--base", "stack/draft")}")
+    printf '[]\\n'
     ;;
   *)
     printf 'unexpected gh arguments: %s\\n' "$*" >&2
@@ -161,7 +218,7 @@ case "$*" in
 esac
 `
   );
-  await chmod(gh, 0o755);
+  await chmod(fake, 0o755);
 
   const originalPath = process.env.PATH;
   process.env.PATH = `${bin}:${originalPath ?? ""}`;
@@ -423,24 +480,16 @@ describe("Store", () => {
     ]);
   });
 
-  it("resolves the ordered gh stack frontier and validates an optional pin", async () => {
+  it("resolves the ordered frontier from the gh base chain and validates an optional pin", async () => {
     const { directory, store } = await initializedStore();
     const stack = await makeGitStack(directory);
-    const output = JSON.stringify({
-      trunk: "main",
-      currentBranch: "stack/open",
-      branches: [
-        ghStackBranch({ name: "stack/merged", pr: 10, state: "MERGED" }),
-        ghStackBranch({ name: "stack/queued", pr: 13, state: "QUEUED" }),
-        ghStackBranch({ name: "stack/open", pr: 11, state: "OPEN" }),
-      ],
-    });
 
     await withFakeGh({
       directory,
-      output,
       operation: async () => {
-        expect(await store.frontier.set({ repo: stack.repo })).toEqual({
+        expect(
+          await store.frontier.set({ repo: stack.repo })
+        ).toEqual({
           generation: 1,
           prs: [
             {
@@ -451,9 +500,9 @@ describe("Store", () => {
             },
             {
               pr: 13,
-              branches: "stack/queued",
-              sha: stack.queuedSha,
-              state: "OPEN",
+              branches: "stack/closed",
+              sha: stack.closedSha,
+              state: "CLOSED",
             },
             {
               pr: 11,
@@ -461,14 +510,20 @@ describe("Store", () => {
               sha: stack.openSha,
               state: "OPEN",
             },
+            {
+              pr: 14,
+              branches: "stack/draft",
+              sha: stack.draftSha,
+              state: "OPEN",
+            },
           ],
-          lowestUnmerged: 13,
+          lowestUnmerged: 11,
         });
         expect(
           (
             await store.frontier.set({
               repo: stack.repo,
-              prs: [10, 13, 11],
+              prs: [10, 13, 11, 14],
             })
           ).generation
         ).toBe(2);
@@ -479,15 +534,15 @@ describe("Store", () => {
             prs: [10, 11, 12],
           })
         ).rejects.toThrow(
-          "frontier pin mismatch: missing from gh stack: 12; extra in gh stack: 13"
+          "frontier pin mismatch: missing from resolved chain: 12; extra in resolved chain: 13,14"
         );
         await expect(
           store.frontier.set({
             repo: stack.repo,
-            prs: [13, 10, 11],
+            prs: [13, 10, 11, 14],
           })
         ).rejects.toThrow(
-          "frontier pin mismatch: order differs: expected 13,10,11; gh stack 10,13,11"
+          "frontier pin mismatch: order differs: expected 13,10,11,14; resolved 10,13,11,14"
         );
         await expect(
           store.frontier.set({
@@ -499,185 +554,37 @@ describe("Store", () => {
     });
   });
 
-  it("sources the sha from git even when the branch row carries an unrelated head field", async () => {
+  it("rejects unparseable gh output loudly", async () => {
     const { directory, store } = await initializedStore();
     const stack = await makeGitStack(directory);
-    const output = JSON.stringify({
-      trunk: "main",
-      currentBranch: "stack/open",
-      branches: [
-        {
-          ...ghStackBranch({ name: "stack/open", pr: 30, state: "OPEN" }),
-          head: "f".repeat(40),
-        },
-      ],
-    });
 
     await withFakeGh({
       directory,
-      output,
+      currentRows: "this line is not gh output",
       operation: async () => {
-        const frontier = await store.frontier.set({ repo: stack.repo });
-        expect(frontier.prs).toEqual([
-          {
-            pr: 30,
-            branches: "stack/open",
-            sha: stack.openSha,
-            state: "OPEN",
-          },
-        ]);
+        await expect(
+          store.frontier.set({ repo: stack.repo })
+        ).rejects.toThrow(
+          "gh pr list --head stack/open output is not valid JSON"
+        );
       },
     });
   });
 
-  it.each([
-    ["OPEN", "OPEN"],
-    ["QUEUED", "OPEN"],
-    ["MERGED", "MERGED"],
-    ["CLOSED", "CLOSED"],
-  ] as const)(
-    "maps a gh stack PR state of %s to frontier state %s",
-    async (ghState, frontierState) => {
-      const { directory, store } = await initializedStore();
-      const stack = await makeGitStack(directory);
-      const output = JSON.stringify({
-        trunk: "main",
-        currentBranch: "stack/open",
-        branches: [
-          ghStackBranch({ name: "stack/open", pr: 20, state: ghState }),
-        ],
-      });
+  it("names the missing pull request when a chain branch has none", async () => {
+    const { directory, store } = await initializedStore();
+    const stack = await makeGitStack(directory);
 
-      await withFakeGh({
-        directory,
-        output,
-        operation: async () => {
-          const frontier = await store.frontier.set({ repo: stack.repo });
-          expect(frontier.prs).toEqual([
-            {
-              pr: 20,
-              branches: "stack/open",
-              sha: stack.openSha,
-              state: frontierState,
-            },
-          ]);
-        },
-      });
-    }
-  );
-
-  const REJECTION_CASES: ReadonlyArray<
-    readonly [
-      string,
-      { readonly output?: string; readonly failWith?: string },
-      string,
-    ]
-  > = [
-    [
-      "the gh command failing",
-      { failWith: "not a git repository" },
-      "gh stack view --json failed:",
-    ],
-    [
-      "invalid JSON output",
-      { output: "not json" },
-      "gh stack view --json output is not valid JSON",
-    ],
-    [
-      "an invalid shape",
-      { output: JSON.stringify({ trunk: "main" }) },
-      "gh stack view --json output has an invalid shape",
-    ],
-    [
-      "an empty stack",
-      {
-        output: JSON.stringify({
-          trunk: "main",
-          currentBranch: "main",
-          branches: [],
-        }),
+    await withFakeGh({
+      directory,
+      currentRows: "[]",
+      operation: async () => {
+        await expect(store.frontier.set({ repo: stack.repo })).rejects.toThrow(
+          "branch stack/open has no pull request; open one with gh pr create"
+        );
       },
-      "gh stack view --json output did not contain a stack",
-    ],
-    [
-      "a branch with no pull request",
-      {
-        output: JSON.stringify({
-          trunk: "main",
-          currentBranch: "stack/open",
-          branches: [
-            {
-              name: "stack/open",
-              isCurrent: true,
-              isMerged: false,
-              isQueued: false,
-              needsRebase: false,
-            },
-          ],
-        }),
-      },
-      "gh stack view --json output branch stack/open has no pull request; the stack may not be submitted yet, so run gh stack submit or resolve the frontier from the stacker's clone",
-    ],
-    [
-      "a duplicate branch",
-      {
-        output: JSON.stringify({
-          trunk: "main",
-          currentBranch: "stack/open",
-          branches: [
-            ghStackBranch({ name: "stack/open", pr: 1, state: "OPEN" }),
-            ghStackBranch({ name: "stack/open", pr: 2, state: "OPEN" }),
-          ],
-        }),
-      },
-      "gh stack view --json output contains duplicate branch stack/open",
-    ],
-    [
-      "a duplicate pull request number",
-      {
-        output: JSON.stringify({
-          trunk: "main",
-          currentBranch: "stack/b",
-          branches: [
-            ghStackBranch({ name: "stack/a", pr: 1, state: "OPEN" }),
-            ghStackBranch({ name: "stack/b", pr: 1, state: "OPEN" }),
-          ],
-        }),
-      },
-      "gh stack view --json output contains duplicate pull requests",
-    ],
-    [
-      "an unknown PR state",
-      {
-        output: JSON.stringify({
-          trunk: "main",
-          currentBranch: "stack/open",
-          branches: [
-            ghStackBranch({ name: "stack/open", pr: 1, state: "DRAFT" }),
-          ],
-        }),
-      },
-      "gh stack view --json output has an unknown PR state for branch stack/open: DRAFT",
-    ],
-  ];
-
-  it.each(REJECTION_CASES)(
-    "rejects gh stack output for %s",
-    async (_name, fixture, expected) => {
-      const { directory, store } = await initializedStore();
-      const stack = await makeGitStack(directory);
-
-      await withFakeGh({
-        directory,
-        ...fixture,
-        operation: async () => {
-          await expect(
-            store.frontier.set({ repo: stack.repo })
-          ).rejects.toThrow(expected);
-        },
-      });
-    }
-  );
+    });
+  });
 
   it("rejects malformed TSV, verdict, frontier, and inbox data", async () => {
     const { directory, store } = await initializedStore();
