@@ -15,17 +15,20 @@ if ! git -C "$repo" merge-base --is-ancestor upstream origin/upstream; then
 fi
 git -C "$repo" branch -f upstream origin/upstream
 
-# A squash-merged sync drops `upstream` from main's ancestry, and the next merge
-# then re-conflicts on every line an earlier sync resolved.
-if ! git -C "$repo" merge-base --is-ancestor upstream origin/main \
-  && ! git -C "$repo" merge-base --is-ancestor upstream HEAD; then
-  previous=$(git -C "$repo" rev-parse --short upstream)
-  echo "warning: main lacks the previous mirror upstream@$previous in its ancestry." >&2
-  echo "  If that sync never landed, land or close its PR before syncing again." >&2
-  echo "  If it was squash-merged, main's content already carries it: restore the ancestry with git merge -s ours $previous" >&2
-fi
-
 last_synced=$(git -C "$repo" log -1 --format=%s upstream | grep -oE '@[0-9a-f]+$' | tr -d @)
+
+# A squash-merged sync drops `upstream` from main's ancestry, and the next merge
+# then re-conflicts on every line an earlier sync resolved. The squash body still
+# names the mirror, which tells a squash apart from a sync that never landed.
+if ! git -C "$repo" merge-base --is-ancestor upstream origin/main; then
+  previous=$(git -C "$repo" rev-parse --short upstream)
+  if [ -z "$(git -C "$repo" log origin/main --format=%h --grep="pstack@$last_synced")" ]; then
+    echo "warning: the sync of upstream@$previous has not landed on main. Land it before syncing again." >&2
+  elif ! git -C "$repo" merge-base --is-ancestor upstream HEAD; then
+    echo "warning: main squash-merged the sync of upstream@$previous, so it lacks that mirror in its ancestry." >&2
+    echo "  Restore it before merging: git merge -s ours $previous" >&2
+  fi
+fi
 git clone -q --depth 1 --filter=blob:none --sparse https://github.com/cursor/plugins "$scratch/plugins"
 git -C "$scratch/plugins" sparse-checkout set pstack
 sha=$(git -C "$scratch/plugins" rev-parse HEAD)

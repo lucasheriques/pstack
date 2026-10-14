@@ -45,7 +45,7 @@ const rules: Rule[] = [
   { name: "cursor-bugbot", pattern: /\bbugbot\b(?!-triage)/i, exemptPaths: /\.ts$/ },
   { name: "effort-dial", pattern: /\breasoning[- ]level\b|\bstandard speed\b/ },
   { name: "principle-as-skill", pattern: /\bprinciple skill\b|\*\*principle-[a-z-]+\*\* skill\b|\bleaf skill\b/ },
-  { name: "unprefixed-agent", pattern: /subagent_type: "(?!pstack:|general-purpose"|Explore"|Plan")/ },
+  { name: "unprefixed-agent", pattern: /subagent_type: "(?!pstack:|general-purpose")/ },
 ];
 
 const exemptFiles = /^(README\.md|LICENSE|scripts\/check-port(\.test)?\.ts|\.claude\/)/;
@@ -98,7 +98,7 @@ const titleIndexes: Record<string, { rule: string; file: (name: string) => strin
   "## Principles": {
     rule: "unresolved-principle-title",
     file: (name) => join(principlesDirectory, `principle-${name}.md`),
-    named: /^- \*\*.+?\*\* \(\*\*principle-[a-z-]+\*\*\)/,
+    named: /^- \*\*[^*]+\*\* \(\*\*principle-[a-z-]+\*\*\)/,
   },
   "## Playbooks": {
     rule: "unresolved-playbook-title",
@@ -126,26 +126,31 @@ function unresolvedIndexTitle(section: string | undefined, lineText: string): st
   return existsSync(index.file(name)) ? [] : [index.rule];
 }
 
-// Upstream renumbers playbook steps when it rewrites a playbook, so every
-// "<playbook> step N" reference must still point at a numbered step.
+// Upstream renumbers playbook steps when it rewrites a playbook. This tripwire
+// flags a "<playbook> step N", "steps N and M", or "step N of the <playbook>
+// playbook" reference past the playbook's last numbered step. It cannot tell
+// that an in-range reference now points at a different step.
 const playbooksDirectory = join(potetoModeDirectory, "playbooks");
-const playbookSteps = new Map(
-  readdirSync(playbooksDirectory).map((file) => {
-    const text = readFileSync(join(playbooksDirectory, file), "utf8");
-    const fenced = insideFence(text);
-    const steps = text
-      .split("\n")
-      .filter((_, index) => !fenced[index])
-      .map((lineText) => Number(/^(\d+)\. /.exec(lineText)?.[1] ?? 0));
-    const title = /^### (.+)$/m.exec(text)?.[1] ?? file;
-    return [file, { title, lastStep: Math.max(0, ...steps) }] as const;
-  }),
-);
+const playbookSteps = readdirSync(playbooksDirectory).map((file) => {
+  const text = readFileSync(join(playbooksDirectory, file), "utf8");
+  const fenced = insideFence(text);
+  const steps = text
+    .split("\n")
+    .filter((_, index) => !fenced[index])
+    .map((lineText) => Number(/^(\d+)\. /.exec(lineText)?.[1] ?? 0));
+  const title = (/^### (.+)$/m.exec(text)?.[1] ?? file).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const name = `(?:\`playbooks/${file}\`|\\b${title})`;
+  return {
+    lastStep: Math.max(0, ...steps),
+    references: new RegExp(`${name} steps? (\\d+(?:(?:,| and| to) \\d+)*)|\\bstep (\\d+) of the ${title} playbook`, "g"),
+  };
+});
 
 function unresolvedSteps(lineText: string): string[] {
-  return [...playbookSteps].flatMap(([file, { title, lastStep }]) =>
-    [...lineText.matchAll(new RegExp(`(?:\`playbooks/${file}\`|\\b${RegExp.escape(title)}) step (\\d+)`, "g"))]
-      .filter(([, step]) => Number(step) > lastStep)
+  return playbookSteps.flatMap(({ lastStep, references }) =>
+    [...lineText.matchAll(references)]
+      .flatMap(([, steps, single]) => (steps ?? single ?? "").match(/\d+/g) ?? [])
+      .filter((step) => Number(step) > lastStep)
       .map(() => "unresolved-step"),
   );
 }
