@@ -122,7 +122,7 @@ function rules(scenario: Scenario = {}): readonly FakeRule[] {
       "query PrCheckRollup",
       [pullRequest({ commits: { nodes: [{ commit: { statusCheckRollup: null } }] } })],
     ],
-    ["query ReviewThreads", [pullRequest({ reviewThreads: { nodes: [] } })]],
+    ["query ReviewThreads", [pullRequest({ reviewThreads: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } })]],
     [
       "query PrCommitStatuses",
       [

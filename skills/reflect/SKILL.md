@@ -8,58 +8,54 @@ disable-model-invocation: true
 
 Mine the current conversation for durable learnings, then route them into skill edits.
 
-## When to invoke
-
 Invoke when the user says "reflect" or "/reflect". Skip when the conversation is trivial, off-topic, or already covered by an existing skill the parent followed correctly. One-offs are not learnings.
 
-## Process
+## 1. Locate the active transcript
 
-### 1. Locate the active transcript
-
-The parent finds its own transcript file before fanning out. It is `~/.claude/projects/<slug>/${CLAUDE_SESSION_ID}.jsonl`, where `<slug>` is the session's starting directory with every non-alphanumeric character replaced by `-`. The session id is unique, so this finds it without opening any other chat:
+Before fanning out, find this conversation's transcript. It is `~/.claude/projects/<slug>/${CLAUDE_SESSION_ID}.jsonl`, where `<slug>` is the session's starting directory with every non-alphanumeric character replaced by `-`. The session id is unique, so this finds it without opening any other chat:
 
 ```bash
 ls ~/.claude/projects/*/${CLAUDE_SESSION_ID}.jsonl
 ```
 
-This session's subagent transcripts sit in `<slug>/${CLAUDE_SESSION_ID}/subagents/`. If no path resolves, write a tight digest of the session and pass that instead.
+This session's subagent transcripts sit in `<slug>/${CLAUDE_SESSION_ID}/subagents/`. If no path resolves, pass a tight digest of the session instead.
 
-### 2. Spawn three reviewers in parallel
+## 2. Spawn three reviewers in parallel
 
-One message, three Agent tool calls, `subagent_type: "pstack:read-only"`, with models from `${CLAUDE_SKILL_DIR}/../poteto-mode/references/models.md`: the `reflect tooling` model for the tooling reviewer and the `reflect judgment, divergent, synthesizer` model for the other two. `pstack:read-only` keeps MCP access for context lookups (tickets, chat threads, observability traces referenced in the transcript).
+One message, three Agent tool calls, `subagent_type: "pstack:read-only"`. Reviewers need MCP access to look up the tickets, chat threads, and observability traces the transcript references, and `pstack:read-only` keeps it.
 
-| Lens | Prompt template |
-|---|---|
-| Judgment | `${CLAUDE_SKILL_DIR}/references/judgment-reviewer.md` |
-| Tooling | `${CLAUDE_SKILL_DIR}/references/tooling-reviewer.md` |
-| Divergent | `${CLAUDE_SKILL_DIR}/references/divergent-reviewer.md` |
+| Lens | Model from `${CLAUDE_SKILL_DIR}/../poteto-mode/references/models.md` | Prompt template |
+|---|---|---|
+| Judgment | `reflect judgment, divergent, synthesizer` | `${CLAUDE_SKILL_DIR}/references/judgment-reviewer.md` |
+| Tooling | `reflect tooling` | `${CLAUDE_SKILL_DIR}/references/tooling-reviewer.md` |
+| Divergent | `reflect judgment, divergent, synthesizer` | `${CLAUDE_SKILL_DIR}/references/divergent-reviewer.md` |
 
 Pass each template verbatim, substituting the transcript path or digest where marked. Reviewers return findings in their final report.
 
-### 3. Synthesize
+## 3. Synthesize
 
-One Agent tool call, `subagent_type: "pstack:read-only"`, on the `reflect judgment, divergent, synthesizer` model. The synthesizer's quality check includes spot-verifying citations, which can require MCP access. Use `${CLAUDE_SKILL_DIR}/references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
+One Agent tool call, `subagent_type: "pstack:read-only"`, on the `reflect judgment, divergent, synthesizer` model. It spot-verifies citations through MCP. Pass `${CLAUDE_SKILL_DIR}/references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. It returns an Accepted / Rejected / Backlog list.
 
-### 4. Structural enforcement check
+## 4. Structural enforcement check
 
-Sanity-check the synthesizer's Accepted list. For any item that would be enforced more reliably by a lint rule, script, metadata flag, or runtime check, move it from Accepted to Backlog. See **principle-encode-lessons-in-structure**.
+Move any Accepted item that a lint rule, script, metadata flag, or runtime check would enforce more reliably to Backlog. See **principle-encode-lessons-in-structure**.
 
-### 5. Apply
+## 5. Apply
 
-Before applying any Accepted edit, present the synthesizer's full Accepted/Rejected/Backlog output to the user and wait for explicit approval. The user picks which subset to apply and may redirect routings. Skill changes affect every future agent in the org. Do not auto-apply.
+Present the synthesizer's full Accepted / Rejected / Backlog output and wait for explicit approval before applying any Accepted edit. The user picks the subset and may redirect routings. Skill changes affect every future agent in the org. Do not auto-apply.
 
-Backlog items file to whatever devex / backlog tracker your team uses automatically. Only the Accepted list waits for approval.
+File each Backlog item to your team's devex or backlog tracker without waiting. Only the Accepted list waits for approval.
 
-For each approved Accepted item, follow the Routing field exactly:
+Follow each approved row's Routing exactly:
 
 - Trivial existing-skill edit (a one-line bullet, a tightened sentence, a stale fact corrected): parent does directly.
 - Substantive existing-skill edit (a new section, a new pattern table, more than ~10 lines): hand to the `skill-creator` skill and run its draft / test / iterate loop.
 - `tune description: <skill path>` (the skill exists but didn't trigger when it should have): hand to `skill-creator` and run its description-optimization loop.
 - `new skill via skill-creator: <kebab-name>`: hand creation to `skill-creator`. Do not invent the shape ad hoc.
 
-If your environment ships a SKILL.md validator, run it on every touched skill before declaring done. Skip this step if it doesn't.
+If your environment ships a SKILL.md validator, run it on every touched skill before declaring done.
 
-### 6. Summarize for the user
+## 6. Summarize for the user
 
 Short list, no preamble:
 

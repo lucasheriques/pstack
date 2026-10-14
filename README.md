@@ -36,6 +36,9 @@ You can also call the other skills directly:
 | `teach` | you want to understand a change or subsystem, built up diagram by diagram |
 | `recall` | you're resuming work and want your recent context rebuilt from past sessions |
 | `bro` | you want the last message restated in plain language |
+| `ketchup` | you want a short catch-up on what changed since your last message, with what still needs you |
+| `in-your-own-words` | you want the agent to play back your goal and the problem before it starts |
+| `sharpen` | you want a task approached the way a top expert would, without overspecifying it |
 | `correct` | agents keep repeating the same mistake in a repo and each one should become impossible |
 | `benchmark-checklist` | you ran a benchmark and want the measurement vetted before you report it |
 | `poteto-help` | you're new to pstack or unsure which skill fits. Type `/pstack:poteto-help` with a question |
@@ -54,7 +57,7 @@ You can also call the other skills directly:
 | `create-verification-skill`, `maintain-verification-skill` | a project needs a scripted way to prove app behavior |
 | `automate-me` | you want your own `<name>-mode` skill drafted from how you work |
 
-The 23 principles live in `skills/poteto-mode/principles/`. poteto-mode reads them on demand instead of loading them into every session.
+The 24 principles live in `skills/poteto-mode/principles/`. poteto-mode reads them on demand instead of loading them into every session.
 
 ## Letting agents merge
 

@@ -22,10 +22,12 @@ The standing rules for porting upstream pstack text. `bun scripts/check-port.ts`
 | Cursor restart | Claude Code restart or context compaction |
 | `/loop` | unchanged. Claude Code ships `/loop` (dynamic mode when no interval is given) |
 | Cursor's built-in `/babysit` | delete the reference |
+| a parent-supplied path to `poteto-mode/SKILL.md`, or a search of `~/.cursor/plugins/` for it | delete. `pstack:poteto-agent` preloads the skill, and poteto-mode names its siblings by absolute path |
+| a built-in PR tool for create, edit, retarget, and ready | delete. `gh` covers every PR operation |
 
 ## Models
 
-Upstream slugs (`claude-opus-5-5-max`, `gpt-5.6-sol-max`, `grok-4.7-xhigh-fast`, composer, codex) become role lookups in `skills/poteto-mode/references/models.md`. Write "the `<role>` model from poteto-mode's `references/models.md`" rather than a model name. Aliases `inherit-parent` and `auto` become "omit `model`". Delete every paragraph about slugs that fail to resolve, budget tiers, or `~/.cursor/rules/pstack-models.mdc`. Claude Code's `model` parameter accepts `opus`, `sonnet`, or nothing here. Never `haiku` or `fable`. No non-Claude models.
+Upstream slugs (`claude-opus-5-5-max`, `gpt-5.6-sol-max`, `grok-4.7-xhigh-fast`, composer, codex) become role lookups in `skills/poteto-mode/references/models.md`. Write "the `<role>` model from poteto-mode's `references/models.md`" rather than a model name. Aliases `inherit-parent` and `auto` become "omit `model`". Delete every paragraph about slugs that fail to resolve, budget tiers, or `~/.cursor/rules/pstack-models.mdc`. The Agent tool has no reasoning-level or speed setting, so delete "pick each subagent's reasoning level and fast or standard speed". poteto-mode's "Match the model to the job" keeps only what the model dial can express: escalate to the hardest-tasks model, keep verification on `swarm workers`, keep panels as listed. Claude Code's `model` parameter accepts `opus`, `sonnet`, or nothing here. Never `haiku` or `fable`. No non-Claude models.
 
 ## Paths
 
@@ -34,7 +36,8 @@ Upstream slugs (`claude-opus-5-5-max`, `gpt-5.6-sol-max`, `grok-4.7-xhigh-fast`,
 | `~/.cursor/skills/`, `.cursor/skills/` | `~/.claude/skills/`, `.claude/skills/` |
 | `.cursor/rules/*.mdc` | the project's `CLAUDE.md` |
 | `~/.cursor/projects/<slug>/agent-transcripts/<uuid>/<uuid>.jsonl` | `~/.claude/projects/<slug>/<session-id>.jsonl`, where `<slug>` is the absolute working directory with every non-alphanumeric character replaced by `-`. Subagent transcripts are `~/.claude/projects/<slug>/<session-id>/subagents/agent-<id>.jsonl`. A skill gets its own session id as `${CLAUDE_SESSION_ID}` |
-| a principle skill `principle-<name>` | `skills/poteto-mode/principles/principle-<name>.md`. Keep the `principle-<name>` token in prose; the lint resolves it |
+| a principle skill `principle-<name>`, "the **<name>** principle skill", or "the **principle-<name>** skill" | `skills/poteto-mode/principles/principle-<name>.md`. Write the `**principle-<name>**` token in prose; the lint resolves it |
+| the agent store ("path in the system prompt") | a path the root names in the brief |
 
 ## Companion tools
 
@@ -45,7 +48,9 @@ Upstream slugs (`claude-opus-5-5-max`, `gpt-5.6-sol-max`, `grok-4.7-xhigh-fast`,
 | `control-cli` (CLIs, TUIs) | the built-in `run` skill |
 | iOS surfaces | the iOS Simulator tool |
 | `create-skill` (Cursor built-in) | the `skill-creator` skill |
-| Origin (`origin pr ...`) | delete. `gh` is the only forge |
+| `/visualize` (Cursor built-in) | the session's visual tool: an inline widget or an Artifact, when the session has one |
+| Origin (`origin pr ...`, `--forge origin`) | delete. `gh` is the only forge, in prose and in scripts (`orch`, `worktree-audit.sh`) |
+| a stack as a base-branch chain changed with `gh pr edit --base` | `gh stack` (`link`, `sync`, `rebase`, `push`). GitHub restacks the rest server-side after a bottom PR merges, so upstream's post-merge retarget goes away |
 | Bugbot, Cursor's agentic security review | "review bots" (Bugbot, Copilot, Greptile, CodeRabbit, and similar). The file keeps its name `references/bugbot-triage.md` |
 | `setup-pstack` | edit `skills/poteto-mode/references/models.md` |
 
@@ -74,4 +79,8 @@ A sync must keep these even when upstream's line differs.
 - `skills/poteto-mode/scripts/merge-gate/` is port-only. It reuses watch-pr's readiness verdict without editing watch-pr, and adds the policy: allowed repos, human-only paths needing a human approval on the head, and head pinning with `--match-head-commit`. A PR in a GitHub native stack refuses `gh pr merge`, so the gate falls back to the merge-async REST endpoint with the same head SHA. Every playbook merges only through it, and a refusal is final: human-only changes are the user's to merge. The policy lives outside git, and editing it is on poteto-mode's always-pause list.
 - `principle-never-block-on-the-human` narrows its force-push example to "force-push to a shared branch", matching poteto-mode's Autonomy. Autopilot owners force-push their own branches with a lease on every rebase.
 - models.md uses only `opus` and `sonnet`. `fable` is dropped for cost: every role that upstream maps to it, and every panel slot, goes to `opus` or `sonnet`. interrogate runs two reviewers (`opus`, `sonnet`), accepting that both share one family and give less independent review than a cross-family pair.
+- `orch frontier set` walks the PR base chain with `gh` only. Upstream's `--forge` option and its Origin branch are removed, so the command takes no forge.
+- Autopilot-stack owners never force-push a branch once the root links it into the `gh stack`. They only add commits, and take the root's push as their new base and lease. Moving a PR out of a stack is the user's, since `gh stack modify` is interactive.
+- Shipping and Autopilot-full merge through `merge-gate`, never `gh pr merge --squash`, and never arm `--auto`, because GitHub merges at once without required checks.
+- `skills/poteto-mode/scripts/check-plan.test.ts` uses the port's plan template: "Ten lanes at the PR head" with no model, and the "Re-read them at every tick" marker.
 - `skills/poteto-help/` is rewritten, not ported line for line. Setup, Custom Modes, and the guide pages are replaced by `claude plugin` install and update, `models.md`, and the README's merge-policy section. Its skill map uses relative links, and the skill tells the model to give users the public GitHub URL.

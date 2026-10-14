@@ -5,7 +5,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const repoRoot = join(import.meta.dir, "..");
-const principlesDirectory = join(repoRoot, "skills/poteto-mode/principles");
+const potetoModeDirectory = join(repoRoot, "skills/poteto-mode");
+const principlesDirectory = join(potetoModeDirectory, "principles");
 const pstackNames = new Set([
   ...readdirSync(join(repoRoot, "skills")),
   ...readdirSync(join(repoRoot, "agents")).map(
@@ -39,9 +40,12 @@ const rules: Rule[] = [
   { name: "origin-forge", pattern: /\borigin pr\b|\bOrigin\b/ },
   { name: "cursor-cloud-agent", pattern: /\bcloud[- ]agents?\b/i },
   { name: "cursor-frontmatter", pattern: /^(mode|reminder|icon|color): /m },
-  { name: "cursor-builtin-skill", pattern: /\bcreate-skill\b|\bsetup-pstack\b|\bmake-bot-ui\b/ },
+  { name: "cursor-builtin-skill", pattern: /\bcreate-skill\b|\bsetup-pstack\b|\bmake-bot-ui\b|\/visualize\b/ },
   { name: "plugin-version", pattern: /"version"\s*:/, paths: /^\.claude-plugin\// },
   { name: "cursor-bugbot", pattern: /\bbugbot\b(?!-triage)/i, exemptPaths: /\.ts$/ },
+  { name: "effort-dial", pattern: /\breasoning[- ]level\b|\bstandard speed\b/ },
+  { name: "principle-as-skill", pattern: /\bprinciple skill\b|\*\*principle-[a-z-]+\*\* skill\b|\bleaf skill\b/ },
+  { name: "unprefixed-agent", pattern: /subagent_type: "(?!pstack:|general-purpose")/ },
 ];
 
 const exemptFiles = /^(README\.md|LICENSE|scripts\/check-port(\.test)?\.ts|\.claude\/)/;
@@ -86,9 +90,75 @@ function unresolvedPrinciples(text: string): string[] {
     .filter((name) => !existsSync(join(principlesDirectory, `${name}.md`)));
 }
 
+// poteto-mode's Principles and Playbooks indexes find each file from the entry's
+// title, unless the entry names it: a `File:` path, or a (**principle-<name>**)
+// right after the title, which unresolvedPrinciples checks.
+const potetoModeSkill = "skills/poteto-mode/SKILL.md";
+const titleIndexes: Record<string, { rule: string; file: (name: string) => string; named: RegExp }> = {
+  "## Principles": {
+    rule: "unresolved-principle-title",
+    file: (name) => join(principlesDirectory, `principle-${name}.md`),
+    named: /^- \*\*[^*]+\*\* \(\*\*principle-[a-z-]+\*\*\)/,
+  },
+  "## Playbooks": {
+    rule: "unresolved-playbook-title",
+    file: (name) => join(potetoModeDirectory, "playbooks", `${name}.md`),
+    named: /File: `playbooks\/[^`]+`/,
+  },
+};
+
+function titleIndexSections(text: string): (string | undefined)[] {
+  let section: string | undefined;
+  return text.split("\n").map((lineText) => {
+    if (/^## /.test(lineText)) section = lineText;
+    return section;
+  });
+}
+
+function unresolvedIndexTitle(section: string | undefined, lineText: string): string[] {
+  const index = section === undefined ? undefined : titleIndexes[section];
+  const title = /^- \*\*(.+?)\.?\*\*/.exec(lineText)?.[1];
+  if (index === undefined || title === undefined) return [];
+  const namedFile = /File: `(playbooks\/[^`]+)`/.exec(lineText)?.[1];
+  if (namedFile !== undefined && !existsSync(join(potetoModeDirectory, namedFile))) return [index.rule];
+  if (index.named.test(lineText)) return [];
+  const name = title.toLowerCase().replace(/[^a-z0-9 -]/g, "").replace(/ /g, "-");
+  return existsSync(index.file(name)) ? [] : [index.rule];
+}
+
+// Upstream renumbers playbook steps when it rewrites a playbook. This tripwire
+// flags a "<playbook> step N", "steps N and M", or "step N of the <playbook>
+// playbook" reference past the playbook's last numbered step. It cannot tell
+// that an in-range reference now points at a different step.
+const playbooksDirectory = join(potetoModeDirectory, "playbooks");
+const playbookSteps = readdirSync(playbooksDirectory).map((file) => {
+  const text = readFileSync(join(playbooksDirectory, file), "utf8");
+  const fenced = insideFence(text);
+  const steps = text
+    .split("\n")
+    .filter((_, index) => !fenced[index])
+    .map((lineText) => Number(/^(\d+)\. /.exec(lineText)?.[1] ?? 0));
+  const title = (/^### (.+)$/m.exec(text)?.[1] ?? file).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const name = `(?:\`playbooks/${file}\`|\\b${title})`;
+  return {
+    lastStep: Math.max(0, ...steps),
+    references: new RegExp(`${name} steps? (\\d+(?:(?:,| and| to) \\d+)*)|\\bstep (\\d+) of the ${title} playbook`, "g"),
+  };
+});
+
+function unresolvedSteps(lineText: string): string[] {
+  return playbookSteps.flatMap(({ lastStep, references }) =>
+    [...lineText.matchAll(references)]
+      .flatMap(([, steps, single]) => (steps ?? single ?? "").match(/\d+/g) ?? [])
+      .filter((step) => Number(step) > lastStep)
+      .map(() => "unresolved-step"),
+  );
+}
+
 export function findingsFor(path: string, text: string): Finding[] {
   const exempt = exemptFiles.test(path);
   const fenced = insideFence(text);
+  const indexSections = path === potetoModeSkill ? titleIndexSections(text) : [];
   return text.split("\n").flatMap((lineText, index) => {
     const linkHits = fenced[index] ? [] : unresolvedLinks(path, lineText).map(() => "unresolved-link");
     const portHits = exempt
@@ -98,6 +168,8 @@ export function findingsFor(path: string, text: string): Finding[] {
             .filter((rule) => (rule.paths?.test(path) ?? true) && !rule.exemptPaths?.test(path) && rule.pattern.test(lineText))
             .map((rule) => rule.name),
           ...unresolvedPrinciples(lineText).map(() => "unresolved-principle"),
+          ...unresolvedIndexTitle(indexSections[index], lineText),
+          ...unresolvedSteps(lineText),
           ...unresolvedSkillPaths(path, lineText).map(() => "unresolved-skill-path"),
           ...unresolvedPstackNames(lineText).map(() => "unresolved-pstack-name"),
         ];
