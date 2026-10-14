@@ -17,10 +17,12 @@ git -C "$repo" branch -f upstream origin/upstream
 
 # A squash-merged sync drops `upstream` from main's ancestry, and the next merge
 # then re-conflicts on every line an earlier sync resolved.
-if ! git -C "$repo" merge-base --is-ancestor upstream origin/main; then
+if ! git -C "$repo" merge-base --is-ancestor upstream origin/main \
+  && ! git -C "$repo" merge-base --is-ancestor upstream HEAD; then
   previous=$(git -C "$repo" rev-parse --short upstream)
-  echo "warning: main lacks upstream@$previous in its ancestry, so an earlier sync was squashed." >&2
-  echo "  If main's content already carries it, restore the ancestry before merging: git merge -s ours $previous" >&2
+  echo "warning: main lacks the previous mirror upstream@$previous in its ancestry." >&2
+  echo "  If that sync never landed, land or close its PR before syncing again." >&2
+  echo "  If it was squash-merged, main's content already carries it: restore the ancestry with git merge -s ours $previous" >&2
 fi
 
 last_synced=$(git -C "$repo" log -1 --format=%s upstream | grep -oE '@[0-9a-f]+$' | tr -d @)

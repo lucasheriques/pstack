@@ -43,9 +43,9 @@ const rules: Rule[] = [
   { name: "cursor-builtin-skill", pattern: /\bcreate-skill\b|\bsetup-pstack\b|\bmake-bot-ui\b|\/visualize\b/ },
   { name: "plugin-version", pattern: /"version"\s*:/, paths: /^\.claude-plugin\// },
   { name: "cursor-bugbot", pattern: /\bbugbot\b(?!-triage)/i, exemptPaths: /\.ts$/ },
-  { name: "effort-dial", pattern: /\breasoning level\b|\bstandard speed\b/ },
+  { name: "effort-dial", pattern: /\breasoning[- ]level\b|\bstandard speed\b/ },
   { name: "principle-as-skill", pattern: /\bprinciple skill\b|\*\*principle-[a-z-]+\*\* skill\b|\bleaf skill\b/ },
-  { name: "unprefixed-agent", pattern: /subagent_type: "(?!pstack:|general-purpose")/ },
+  { name: "unprefixed-agent", pattern: /subagent_type: "(?!pstack:|general-purpose"|Explore"|Plan")/ },
 ];
 
 const exemptFiles = /^(README\.md|LICENSE|scripts\/check-port(\.test)?\.ts|\.claude\/)/;
@@ -91,14 +91,14 @@ function unresolvedPrinciples(text: string): string[] {
 }
 
 // poteto-mode's Principles and Playbooks indexes find each file from the entry's
-// title, unless the entry names it: a `File:` path, or a principle-<name> token
-// that unresolvedPrinciples checks.
+// title, unless the entry names it: a `File:` path, or a (**principle-<name>**)
+// right after the title, which unresolvedPrinciples checks.
 const potetoModeSkill = "skills/poteto-mode/SKILL.md";
 const titleIndexes: Record<string, { rule: string; file: (name: string) => string; named: RegExp }> = {
   "## Principles": {
     rule: "unresolved-principle-title",
     file: (name) => join(principlesDirectory, `principle-${name}.md`),
-    named: /\bprinciple-[a-z]/,
+    named: /^- \*\*.+?\*\* \(\*\*principle-[a-z-]+\*\*\)/,
   },
   "## Playbooks": {
     rule: "unresolved-playbook-title",
@@ -126,6 +126,30 @@ function unresolvedIndexTitle(section: string | undefined, lineText: string): st
   return existsSync(index.file(name)) ? [] : [index.rule];
 }
 
+// Upstream renumbers playbook steps when it rewrites a playbook, so every
+// "<playbook> step N" reference must still point at a numbered step.
+const playbooksDirectory = join(potetoModeDirectory, "playbooks");
+const playbookSteps = new Map(
+  readdirSync(playbooksDirectory).map((file) => {
+    const text = readFileSync(join(playbooksDirectory, file), "utf8");
+    const fenced = insideFence(text);
+    const steps = text
+      .split("\n")
+      .filter((_, index) => !fenced[index])
+      .map((lineText) => Number(/^(\d+)\. /.exec(lineText)?.[1] ?? 0));
+    const title = /^### (.+)$/m.exec(text)?.[1] ?? file;
+    return [file, { title, lastStep: Math.max(0, ...steps) }] as const;
+  }),
+);
+
+function unresolvedSteps(lineText: string): string[] {
+  return [...playbookSteps].flatMap(([file, { title, lastStep }]) =>
+    [...lineText.matchAll(new RegExp(`(?:\`playbooks/${file}\`|\\b${RegExp.escape(title)}) step (\\d+)`, "g"))]
+      .filter(([, step]) => Number(step) > lastStep)
+      .map(() => "unresolved-step"),
+  );
+}
+
 export function findingsFor(path: string, text: string): Finding[] {
   const exempt = exemptFiles.test(path);
   const fenced = insideFence(text);
@@ -140,6 +164,7 @@ export function findingsFor(path: string, text: string): Finding[] {
             .map((rule) => rule.name),
           ...unresolvedPrinciples(lineText).map(() => "unresolved-principle"),
           ...unresolvedIndexTitle(indexSections[index], lineText),
+          ...unresolvedSteps(lineText),
           ...unresolvedSkillPaths(path, lineText).map(() => "unresolved-skill-path"),
           ...unresolvedPstackNames(lineText).map(() => "unresolved-pstack-name"),
         ];
