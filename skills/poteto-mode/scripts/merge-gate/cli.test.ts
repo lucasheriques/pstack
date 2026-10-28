@@ -46,13 +46,14 @@ interface Scenario extends PrFixture {
   readonly policy?: string | null;
 }
 
-const outcome = (state: string, mergeCommit: string | null): FakeResponse => ({
+const outcome = (state: string, mergeCommit: string | null, head = HEAD): FakeResponse => ({
   stdout: {
     data: {
       repository: {
         pullRequest: {
           state,
           mergedAt: state === "MERGED" ? "2026-09-24T00:00:00Z" : null,
+          headRefOid: head,
           mergeCommit: mergeCommit === null ? null : { oid: mergeCommit },
         },
       },
@@ -130,7 +131,7 @@ function prRules(number: number, pr: PrFixture): FakeRule[] {
       graphql("PrCommitStatuses"),
       [pullRequest({ commits: { nodes: [{ commit: { oid: head, statusCheckRollup: { state: checks?.rollup ?? "SUCCESS" } } }] } })],
     ],
-    [graphql("MergeGateOutcome"), pr.outcome ?? [outcome("MERGED", MERGE_COMMIT)]],
+    [graphql("MergeGateOutcome"), pr.outcome ?? [outcome("MERGED", MERGE_COMMIT, head)]],
   ];
 }
 
@@ -138,7 +139,13 @@ function prRules(number: number, pr: PrFixture): FakeRule[] {
 const prAt = (position: number): number => position + 4;
 type EntryState = "OPEN" | "CLOSED" | "MERGED";
 
-const stackPage = (states: readonly EntryState[], { from = 1, cursor = null as string | null } = {}): FakeResponse => ({
+interface StackNode {
+  readonly number: number;
+  readonly state: EntryState;
+  readonly base: string;
+}
+
+const stackRead = (nodes: readonly StackNode[], { from = 1, cursor = null as string | null } = {}): FakeResponse => ({
   stdout: {
     data: {
       repository: {
@@ -147,9 +154,9 @@ const stackPage = (states: readonly EntryState[], { from = 1, cursor = null as s
             number: 42,
             entries: {
               pageInfo: { hasNextPage: cursor !== null, endCursor: cursor },
-              nodes: states.map((state, index) => ({
+              nodes: nodes.map(({ number, state, base }, index) => ({
                 position: from + index,
-                pullRequest: { number: prAt(from + index), state, headRefName: `feature-${prAt(from + index)}` },
+                pullRequest: { number, state, headRefName: `feature-${number}`, baseRefName: base },
               })),
             },
           },
@@ -158,6 +165,15 @@ const stackPage = (states: readonly EntryState[], { from = 1, cursor = null as s
     },
   },
 });
+/** Each entry sits on the one below it, and position 1 on main. */
+const stackPage = (states: readonly EntryState[], { from = 1, cursor = null as string | null } = {}): FakeResponse =>
+  stackRead(
+    states.map((state, index) => {
+      const position = from + index;
+      return { number: prAt(position), state, base: position === 1 ? "main" : `feature-${prAt(position - 1)}` };
+    }),
+    { from, cursor }
+  );
 const NOT_STACKED: FakeResponse = { stdout: { data: { repository: { pullRequest: { stack: null } } } } };
 
 function rules(scenario: Scenario = {}): readonly FakeRule[] {
@@ -220,6 +236,12 @@ const asyncPut = [
   "merge_action=direct_merge",
 ];
 const asyncPoll = ["api", `repos/acme/app/pulls/7/merge-async/${JOB}`];
+const existingRequest = (head: string): FakeResponse => ({
+  stdout: {
+    status: "pending",
+    details: { message: "Merge request already exists.", uuid: JOB, merge_method: head === HEAD ? "squash" : "merge", expected_head_sha: head },
+  },
+});
 
 describe("merge-gate CLI against a fake gh", () => {
   it.each<[string, Scenario, readonly string[], number, object, readonly (readonly string[])[]]>([
@@ -413,18 +435,54 @@ describe("merge-gate CLI against a fake gh", () => {
       [squash, asyncPut],
     ],
     [
-      "refuses when GitHub rejects the pinned head",
+      "reports an unverified merge on a 409 without a merge request in its body",
       {
         merge: [STACKED],
         asyncMerge: [{ stderr: "gh: Head branch was modified. Review and try the merge again. (HTTP 409)\n", exit: 1 }],
         ...open,
       },
-      2,
+      1,
       refused(
-        "merge-failed",
-        "merge-async request failed: gh api repos/acme/app/pulls/7/merge-async exited 1: gh: Head branch was modified. Review and try the merge again. (HTTP 409); PR is OPEN"
+        "merge-unverified",
+        `merge-async reported an existing merge request (HTTP 409): gh api repos/acme/app/pulls/7/merge-async printed invalid JSON${UNSETTLED}`
       ),
       [squash, asyncPut],
+    ],
+    [
+      "polls the existing merge request a 409 returns when it pins the gated head",
+      {
+        merge: [STACKED],
+        asyncMerge: [{ ...existingRequest(HEAD), stderr: "gh: HTTP 409 (HTTP 409)\n", exit: 1 }],
+      },
+      0,
+      { ...subject, decision: "merge", merged: true, mergeCommit: MERGE_COMMIT, reasons: [] },
+      [squash, asyncPut, asyncPoll],
+    ],
+    [
+      "reports an unverified merge when a 409 returns a request for another head",
+      {
+        merge: [STACKED],
+        asyncMerge: [{ ...existingRequest(MOVED), stderr: "gh: HTTP 409 (HTTP 409)\n", exit: 1 }],
+        ...open,
+      },
+      1,
+      refused(
+        "merge-unverified",
+        `another merge request, merge-async job ${JOB}, already exists with different options (head ${MOVED}, method merge), so merge-gate did not poll it${UNSETTLED}`
+      ),
+      [squash, asyncPut],
+    ],
+    [
+      "never reports a failure for the existing merge request a 409 returns",
+      {
+        merge: [STACKED],
+        asyncMerge: [{ ...existingRequest(HEAD), stderr: "gh: HTTP 409 (HTTP 409)\n", exit: 1 }],
+        asyncPolls: [{ stdout: { status: "failed", details: { message: "Merge conflict" } } }],
+        ...open,
+      },
+      1,
+      refused("merge-unverified", `merge-async job ${JOB} failed: Merge conflict${UNSETTLED}`),
+      [squash, asyncPut, asyncPoll],
     ],
     [
       "reports an unverified merge when the merge-async request errors server-side",
@@ -562,11 +620,13 @@ describe("merge-gate --stack against a fake gh", () => {
       const match = /^repos\/acme\/app\/pulls\/(\d+)\/files/.exec(argv[1] ?? "");
       return match === null ? [] : [Number(match[1])];
     });
+  const HEADS: Readonly<Record<number, string>> = { 5: HEAD_5, 6: HEAD_6, 7: HEAD };
+  /** `head` null is a refusal before the gate read any PR, so no PR carries a head yet. */
   const subject = (prs: readonly number[] | null, head: string | null = HEAD) => ({
     repo: "acme/app",
     pr: 7,
     head,
-    stack: prs === null ? null : { number: 42, prs },
+    stack: prs === null ? null : { number: 42, prs: prs.map((number) => ({ number, head: head && HEADS[number] })) },
   });
   const merged = (prs: readonly number[]): Verdict => ({
     ...subject(prs),
@@ -584,6 +644,7 @@ describe("merge-gate --stack against a fake gh", () => {
     reasons: [{ code, detail }],
   });
   const ALL = [5, 6, 7];
+  const GATED_STACK = "#5 (open, feature-5) on main, #6 (open, feature-6) on feature-5, #7 (open, feature-7) on feature-6";
   const UNSETTLED =
     "so the stack may still merge. Wait for gh pr view to show every PR settled before rerunning merge-gate --stack --merge.";
   const open = { outcome: [outcome("OPEN", null)] };
@@ -653,7 +714,16 @@ describe("merge-gate --stack against a fake gh", () => {
     },
     {
       name: "skips a merged lower entry and gates the rest against trunk",
-      scenario: { stack: [stackPage(["MERGED", "OPEN", "OPEN"])], prs: { 6: { baseRefName: "main" } } },
+      scenario: {
+        stack: [
+          stackRead([
+            { number: 5, state: "MERGED", base: "main" },
+            { number: 6, state: "OPEN", base: "main" },
+            { number: 7, state: "OPEN", base: "feature-6" },
+          ]),
+        ],
+        prs: { 6: { baseRefName: "main" } },
+      },
       merge: true,
       exit: 0,
       verdict: merged([6, 7]),
@@ -684,6 +754,77 @@ describe("merge-gate --stack against a fake gh", () => {
       merge: true,
       exit: 2,
       verdict: refused(subject(ALL), "head-moved", `#5: head was ${HEAD_5}, then ${MOVED} before merging`),
+      gated: ALL,
+      calls: [],
+    },
+    {
+      name: "refuses a range whose stack gained a PR below the target after gating",
+      scenario: {
+        stack: [
+          stackPage(["OPEN", "OPEN", "OPEN"]),
+          stackRead([
+            { number: 5, state: "OPEN", base: "main" },
+            { number: 8, state: "OPEN", base: "feature-5" },
+            { number: 6, state: "OPEN", base: "feature-8" },
+            { number: 7, state: "OPEN", base: "feature-6" },
+          ]),
+        ],
+      },
+      merge: true,
+      exit: 2,
+      verdict: refused(
+        subject(ALL),
+        "stack-changed",
+        `stack #42 changed after gating: gated ${GATED_STACK}; now stack #42 lists #5 (open, feature-5) on main, #8 (open, feature-8) on feature-5, #6 (open, feature-6) on feature-8, #7 (open, feature-7) on feature-6`
+      ),
+      gated: ALL,
+      calls: [],
+    },
+    {
+      name: "refuses a range whose PR was retargeted after gating",
+      scenario: {
+        stack: [
+          stackPage(["OPEN", "OPEN", "OPEN"]),
+          stackRead([
+            { number: 5, state: "OPEN", base: "main" },
+            { number: 6, state: "OPEN", base: "main" },
+            { number: 7, state: "OPEN", base: "feature-6" },
+          ]),
+        ],
+      },
+      merge: true,
+      exit: 2,
+      verdict: refused(
+        subject(ALL),
+        "stack-changed",
+        `stack #42 changed after gating: gated ${GATED_STACK}; now stack #42 lists #5 (open, feature-5) on main, #6 (open, feature-6) on main, #7 (open, feature-7) on feature-6`
+      ),
+      gated: ALL,
+      calls: [],
+    },
+    {
+      name: "refuses a merge that landed a lower head other than the one gated",
+      scenario: { prs: { 5: { outcome: [outcome("MERGED", MERGE_COMMIT, MOVED)] } } },
+      merge: true,
+      exit: 1,
+      verdict: refused(
+        subject(ALL),
+        "merged-ungated-head",
+        `merge-async job ${JOB} reported merged; #5 merged head ${MOVED}, but merge-gate gated ${HEAD_5}. Commits merge-gate never gated landed in ${MERGE_COMMIT}, so a human must review what merged before anything else lands.`
+      ),
+      gated: ALL,
+      calls: [asyncPut, asyncPoll],
+    },
+    {
+      name: "refuses a range whose PRs call for different merge methods",
+      scenario: { prs: { 6: { headRefName: "sync/upstream" } } },
+      merge: true,
+      exit: 2,
+      verdict: refused(
+        subject(ALL),
+        "method-mismatch",
+        "one call merges the range with one method, but #5 uses squash, #6 uses merge, #7 uses squash"
+      ),
       gated: ALL,
       calls: [],
     },

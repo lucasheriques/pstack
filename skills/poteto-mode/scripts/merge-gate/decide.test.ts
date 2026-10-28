@@ -392,6 +392,7 @@ const entry = (position: number, state: StackEntry["state"] = "OPEN"): StackEntr
   number: prAt(position),
   state,
   headRefName: `feature-${prAt(position)}`,
+  baseRefName: position === 1 ? "main" : `feature-${prAt(position - 1)}`,
 });
 const onTop = (position: number): ExpectedBase => ({ kind: "below", number: prAt(position), branch: `feature-${prAt(position)}` });
 
@@ -438,7 +439,7 @@ describe("planStack", () => {
 });
 
 describe("decidePlan", () => {
-  const gated = (position: number, base: ExpectedBase, facts: Partial<PrFacts> = {}) => ({
+  const gated = (position: number, base: ExpectedBase, facts: Partial<PrFacts> = {}, branch = `feature-${prAt(position)}`) => ({
     base,
     facts: {
       pr: { owner: "acme", repo: "app", number: prAt(position) },
@@ -461,7 +462,7 @@ describe("decidePlan", () => {
           mergeStateStatus: "CLEAN",
           reviewDecision: null,
           headRefOid: HEAD,
-          headRefName: `feature-${prAt(position)}`,
+          headRefName: branch,
           baseRefName: base.kind === "trunk" ? "main" : base.branch,
           state: "OPEN",
           mergedAt: null,
@@ -481,6 +482,28 @@ describe("decidePlan", () => {
       below: [gated(1, TRUNK), gated(2, onTop(1))],
       top: gated(3, onTop(2)),
       expected: { kind: "merge", method: "squash" },
+    },
+    {
+      name: "refuses a stack whose PRs call for different merge methods",
+      stack: 42,
+      below: [gated(1, TRUNK), gated(2, onTop(1), {}, "sync/upstream")],
+      top: gated(3, onTop(2)),
+      expected: {
+        kind: "refuse",
+        reasons: [
+          {
+            code: "method-mismatch",
+            detail: "one call merges the range with one method, but #5 uses squash, #6 uses merge, #7 uses squash",
+          },
+        ],
+      },
+    },
+    {
+      name: "merges a stack with a merge commit when every PR calls for one",
+      stack: 42,
+      below: [gated(1, TRUNK, {}, "sync/a")],
+      top: gated(2, onTop(1), {}, "sync/b"),
+      expected: { kind: "merge", method: "merge" },
     },
     {
       name: "tags each refusal with its PR in a stack",

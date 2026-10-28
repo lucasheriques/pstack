@@ -4,7 +4,7 @@ import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { WatcherQueryError } from "../watch-pr/github.ts";
 import type * as W from "../watch-pr/types.ts";
 import { nonEmpty, parsePrNumber } from "../watch-pr/types.ts";
-import { type Reason, type ReasonCode, decidePlan, plainPlan, planStack } from "./decide.ts";
+import { type Reason, type ReasonCode, decidePlan, plainPlan, planStack, stackChange } from "./decide.ts";
 import { type GateGitHub, GhGateGitHub, GitHubError, type MergeResult } from "./github.ts";
 import { PolicyError, loadPolicy } from "./policy.ts";
 
@@ -12,8 +12,14 @@ interface Subject {
   readonly repo: string | null;
   readonly pr: number | null;
   readonly head: string | null;
-  /** With --stack, the native stack and the PRs gated, bottom first; null without --stack or before the stack is read. */
-  readonly stack: { readonly number: number; readonly prs: readonly number[] } | null;
+  /**
+   * With --stack, the native stack and its PRs, bottom first, each with the head the gate read (null before it read them);
+   * null without --stack or before the stack is read.
+   */
+  readonly stack: {
+    readonly number: number;
+    readonly prs: readonly { readonly number: number; readonly head: string | null }[];
+  } | null;
 }
 
 export type Verdict = Subject &
@@ -80,7 +86,7 @@ function target(value: string): { readonly number: W.PrNumber; readonly repo: W.
 function parseArgs(argv: readonly string[], runtime: Runtime): Request {
   const program = new Command("merge-gate")
     .description(
-      "Decide whether an agent may merge one PR under the merge policy, and with --merge, merge it.\nWith --stack, gate every open PR from the bottom of its GitHub native stack up to this one, and merge them together.\nPrints one JSON verdict. Exit 0: mergeable or merged, 2: refused, 1: internal error."
+      "Decide whether an agent may merge one PR under the merge policy, and with --merge, merge it.\nWith --stack, gate every open PR from the bottom of its GitHub native stack up to this one, and merge them together.\nPrints one JSON verdict. Exit 0: mergeable or merged, 2: refused, 1: internal error, or a merge that may have landed or landed ungated commits."
     )
     .configureOutput({ writeOut: runtime.stdout, writeErr: runtime.stderr })
     .exitOverride()
@@ -115,12 +121,18 @@ const refuse = (subject: Subject, reasons: W.NonEmpty<Reason>): Verdict => ({
 
 const refuseOne = (subject: Subject, code: ReasonCode, detail: string): Verdict => refuse(subject, [{ code, detail }]);
 
+const MERGE_REFUSAL: Record<Exclude<MergeResult["kind"], "merged">, ReasonCode> = {
+  failed: "merge-failed",
+  unverified: "merge-unverified",
+  ungated: "merged-ungated-head",
+};
+
 /** A merge decision, after the merge when `merge` is given. */
 function approve(subject: Subject, merge: MergeResult | null): Verdict {
   if (merge === null) return { ...subject, decision: "merge", merged: false, mergeCommit: null, reasons: [] };
   return merge.kind === "merged"
     ? { ...subject, decision: "merge", merged: true, mergeCommit: merge.commit, reasons: [] }
-    : refuseOne(subject, merge.kind === "unverified" ? "merge-unverified" : "merge-failed", merge.detail);
+    : refuseOne(subject, MERGE_REFUSAL[merge.kind], merge.detail);
 }
 
 async function evaluate(request: Request, runtime: Runtime): Promise<Verdict> {
@@ -144,30 +156,39 @@ async function evaluate(request: Request, runtime: Runtime): Promise<Verdict> {
     const { plan, reasons: blocked } =
       stack === undefined ? { plan: plainPlan(request.number), reasons: [] } : planStack(stack);
     if (plan.stack !== null)
-      subject = { ...subject, stack: { number: plan.stack, prs: [...plan.below, plan.top].map((pr) => pr.number) } };
+      subject = { ...subject, stack: { number: plan.stack, prs: [...plan.below, plan.top].map(({ number }) => ({ number, head: null })) } };
     const unplanned = nonEmpty(blocked);
     if (unplanned !== null) return refuse(subject, unplanned);
     const [top, ...below] = await Promise.all(
       [plan.top, ...plan.below].map(async ({ number, base }) => ({ facts: await github.facts(at(number)), base }))
     );
-    subject = { ...subject, repo: slug(top.facts.pr), pr: top.facts.pr.number, head: top.facts.head };
+    const gated = [...below, top].map(({ facts }) => ({ pr: facts.pr, head: facts.head }));
+    subject = {
+      ...subject,
+      repo: slug(top.facts.pr),
+      pr: top.facts.pr.number,
+      head: top.facts.head,
+      stack: subject.stack && { ...subject.stack, prs: gated.map(({ pr, head }) => ({ number: pr.number, head })) },
+    };
     const decision = decidePlan(policy, viewer, plan.stack, below, top);
     if (decision.kind === "refuse") return refuse(subject, decision.reasons);
     if (!request.merge) return approve(subject, null);
-    const gated = [...below, top].map(({ facts }) => facts);
-    const heads = await Promise.all(gated.map((facts) => github.head(facts.pr)));
-    const moved = gated.findIndex((facts, index) => heads[index] !== facts.head);
+    // As late as possible before the merge: GitHub pins only the top head, so
+    // these reads are what keep the lower PRs and the stack's shape as gated.
+    const [heads, now] = await Promise.all([
+      Promise.all(gated.map(({ pr }) => github.head(pr))),
+      stack === undefined ? undefined : github.stack(top.facts.pr),
+    ]);
+    const moved = gated.findIndex(({ head }, index) => heads[index] !== head);
     if (moved >= 0) {
       const { pr, head } = gated[moved];
       const tag = plan.stack === null ? "" : `#${pr.number}: `;
       return refuseOne(subject, "head-moved", `${tag}head was ${head}, then ${heads[moved] ?? "unknown"} before merging`);
     }
-    return approve(
-      subject,
-      plan.stack === null
-        ? await github.merge(top.facts.pr, top.facts.head, decision.method)
-        : await github.mergeStack(top.facts.pr, top.facts.head, decision.method, below.map(({ facts }) => facts.pr))
-    );
+    if (stack === undefined) return approve(subject, await github.merge(top.facts.pr, top.facts.head, decision.method));
+    const changed = stackChange(stack, plan, top.facts.defaultBranch, now ?? null);
+    if (changed !== null) return refuse(subject, [changed]);
+    return approve(subject, await github.mergeStack(gated, decision.method));
   } catch (error) {
     if (error instanceof PolicyError) return refuseOne(subject, "policy-invalid", error.message);
     if (error instanceof GitHubError || error instanceof WatcherQueryError)
@@ -176,9 +197,12 @@ async function evaluate(request: Request, runtime: Runtime): Promise<Verdict> {
   }
 }
 
+/** Not a plain refusal: merge-gate failed, or a merge may have landed or landed ungated commits. */
+const NEEDS_A_HUMAN: ReadonlySet<ReasonCode> = new Set(["internal-error", "merge-unverified", "merged-ungated-head"]);
+
 function exitCode(verdict: Verdict): number {
   if (verdict.decision === "merge") return 0;
-  return verdict.reasons.some((reason) => reason.code === "internal-error" || reason.code === "merge-unverified") ? 1 : 2;
+  return verdict.reasons.some((reason) => NEEDS_A_HUMAN.has(reason.code)) ? 1 : 2;
 }
 
 export async function main(

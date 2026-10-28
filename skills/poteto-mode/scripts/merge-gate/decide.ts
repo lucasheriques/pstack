@@ -24,6 +24,9 @@ export type ReasonCode =
   | "github-error"
   | "merge-failed"
   | "merge-unverified"
+  | "merged-ungated-head"
+  | "stack-changed"
+  | "method-mismatch"
   | "internal-error";
 
 export interface Reason {
@@ -97,6 +100,7 @@ export interface StackEntry {
   readonly number: W.PrNumber;
   readonly state: "OPEN" | "CLOSED" | "MERGED";
   readonly headRefName: string;
+  readonly baseRefName: string;
 }
 
 /** A GitHub native stack read for its PR `target`; `below` holds every entry under it, bottom first. */
@@ -372,7 +376,7 @@ export function planStack(stack: NativeStack): { readonly plan: Plan; readonly r
   };
 }
 
-/** Gates every PR of a plan; it merges only when all pass, by the method the top PR's branch calls for. */
+/** Gates every PR of a plan; it merges only when all pass and agree on the method. */
 export function decidePlan(
   policy: Policy,
   viewer: string,
@@ -380,18 +384,42 @@ export function decidePlan(
   below: readonly Gated[],
   top: Gated
 ): Decision {
-  const decision = decide(policy, top.facts, viewer, top.base);
-  const refusals = (facts: PrFacts, verdict: Decision): readonly Reason[] =>
-    verdict.kind === "merge"
-      ? []
-      : verdict.reasons.map((refusal) =>
-          stack === null ? withStackHint(refusal, facts) : { ...refusal, detail: `#${facts.pr.number}: ${refusal.detail}` }
-        );
-  const reasons = nonEmpty([
-    ...below.flatMap(({ facts, base }) => refusals(facts, decide(policy, facts, viewer, base))),
-    ...refusals(top.facts, decision),
-  ]);
-  return reasons === null ? decision : { kind: "refuse", reasons };
+  const verdicts = [...below, top].map(({ facts, base }) => ({ facts, decision: decide(policy, facts, viewer, base) }));
+  const reasons = nonEmpty(
+    verdicts.flatMap(({ facts, decision }) =>
+      decision.kind === "merge"
+        ? []
+        : decision.reasons.map((refusal) =>
+            stack === null ? withStackHint(refusal, facts) : { ...refusal, detail: `#${facts.pr.number}: ${refusal.detail}` }
+          )
+    )
+  );
+  if (reasons !== null) return { kind: "refuse", reasons };
+  const methods = verdicts.flatMap(({ facts, decision }) =>
+    decision.kind === "merge" ? [{ number: facts.pr.number, method: decision.method }] : []
+  );
+  // One merge-async call lands the whole range with a single method.
+  if (new Set(methods.map(({ method }) => method)).size === 1) return verdicts[verdicts.length - 1].decision;
+  const each = methods.map(({ number, method }) => `#${number} uses ${method}`).join(", ");
+  return { kind: "refuse", reasons: [reason("method-mismatch", `one call merges the range with one method, but ${each}`)] };
+}
+
+// A PR inserted, merged, closed or retargeted after gating changes what one
+// merge-async call lands, so the stack read again just before merging must
+// list the gated PRs, open and in order, each on the base it was gated on.
+export function stackChange(gated: NativeStack, plan: Plan, trunk: string | null, now: NativeStack | null): Reason | null {
+  const expected = new Map([...plan.below, plan.top].map(({ number, base }) => [number, base.kind === "trunk" ? trunk : base.branch]));
+  const describe = (stack: NativeStack, base: (entry: StackEntry) => string | null | undefined): string =>
+    [...stack.below, stack.target]
+      .filter((entry) => entry.state !== "MERGED")
+      .map((entry) => `#${entry.number} (${entry.state.toLowerCase()}, ${entry.headRefName}) on ${base(entry) ?? "unknown"}`)
+      .join(", ");
+  const planned = describe(gated, (entry) => expected.get(entry.number));
+  if (now?.number === gated.number && describe(now, (entry) => entry.baseRefName) === planned) return null;
+  return reason(
+    "stack-changed",
+    `stack #${gated.number} changed after gating: gated ${planned}; now ${now === null ? "the PR is in no stack" : `stack #${now.number} lists ${describe(now, (entry) => entry.baseRefName)}`}`
+  );
 }
 
 function withStackHint(refusal: Reason, facts: PrFacts): Reason {

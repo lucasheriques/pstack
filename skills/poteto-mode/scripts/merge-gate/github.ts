@@ -18,7 +18,15 @@ import type {
 export type MergeResult =
   | { readonly kind: "merged"; readonly commit: string | null }
   | { readonly kind: "failed"; readonly detail: string }
-  | { readonly kind: "unverified"; readonly detail: string };
+  | { readonly kind: "unverified"; readonly detail: string }
+  /** A PR merged with a head other than the one gated. */
+  | { readonly kind: "ungated"; readonly detail: string };
+
+/** A PR and the head merge-gate gated on it. */
+export interface Pinned {
+  readonly pr: W.PrContext;
+  readonly head: string;
+}
 
 export interface GateGitHub {
   originRepo(): Promise<W.Repository | null>;
@@ -28,8 +36,11 @@ export interface GateGitHub {
   merge(pr: W.PrContext, head: string, method: MergeMethod): Promise<MergeResult>;
   /** The native stack `pr` belongs to, or null when it is in none. */
   stack(pr: W.PrContext): Promise<NativeStack | null>;
-  /** One merge-async call on `top`, which lands every PR below it too; `below` is read back to confirm. */
-  mergeStack(top: W.PrContext, head: string, method: MergeMethod, below: readonly W.PrContext[]): Promise<MergeResult>;
+  /**
+   * One merge-async call on the last PR, pinned to its head, lands every PR below it too.
+   * GitHub pins only that head, so every PR is read back and its merged head checked against its gated one.
+   */
+  mergeStack(range: readonly Pinned[], method: MergeMethod): Promise<MergeResult>;
 }
 
 /** A gh call failed or answered with a shape merge-gate does not recognize. */
@@ -71,6 +82,7 @@ query MergeGateOutcome($owner: String!, $repo: String!, $pr: Int!) {
     pullRequest(number: $pr) {
       state
       mergedAt
+      headRefOid
       mergeCommit { oid }
     }
   }
@@ -84,7 +96,7 @@ query MergeGateStack($owner: String!, $repo: String!, $pr: Int!, $after: String)
         number
         entries(first: 100, after: $after) {
           pageInfo { hasNextPage endCursor }
-          nodes { position pullRequest { number state headRefName } }
+          nodes { position pullRequest { number state headRefName baseRefName } }
         }
       }
     }
@@ -100,6 +112,8 @@ const MERGE_POLL_MS = 2_000;
 const MAX_MERGE_POLLS = 30;
 /** Only a 4xx proves GitHub queued nothing; a 5xx, a timeout or a garbled body may hide a queued job. */
 const REJECTED = /\(HTTP 4\d\d\)/;
+/** merge-async answers 409 when a merge request for the PR already exists, and returns that request. */
+const CONFLICT = /\(HTTP 409\)/;
 const FILES_PER_PAGE = 100;
 /** GitHub's pull request files endpoint stops at 3000 files. */
 const MAX_FILE_PAGES = 30;
@@ -155,17 +169,22 @@ function graphql(query: string, pr: W.PrContext, cursor: string | null = null): 
   ]);
 }
 
+const describeCommand = (args: readonly string[]): string => `gh ${args.slice(0, 2).join(" ")}`;
+
 async function ghJson(args: readonly string[]): Promise<unknown> {
   const result = await gh(args);
-  const command = `gh ${args.slice(0, 2).join(" ")}`;
   if (result.code !== 0)
     throw new GitHubError(
-      `${command} exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}`
+      `${describeCommand(args)} exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}`
     );
+  return body(args, result);
+}
+
+function body(args: readonly string[], result: CommandResult): unknown {
   try {
     return JSON.parse(result.stdout);
   } catch {
-    throw new GitHubError(`${command} printed invalid JSON`);
+    throw new GitHubError(`${describeCommand(args)} printed invalid JSON`);
   }
 }
 
@@ -279,16 +298,19 @@ function parseStackEntry(value: unknown, index: number): StackEntry {
     number: prNumber(pr.number, `${path}.pullRequest.number`),
     state: ENTRY_STATES.find((state) => state === pr.state) ?? invalid(`${path}.pullRequest.state`, pr.state),
     headRefName: text(pr.headRefName, `${path}.pullRequest.headRefName`),
+    baseRefName: text(pr.baseRefName, `${path}.pullRequest.baseRefName`),
   };
 }
 
-/** A merged PR carries its merge commit; any other state is reported as GitHub names it. */
-type Outcome = { readonly merged: true; readonly commit: string | null } | { readonly merged: false; readonly state: string };
+/** A merged PR carries its merge commit and the head it merged; any other state is reported as GitHub names it. */
+type Outcome =
+  | { readonly merged: true; readonly commit: string | null; readonly head: string }
+  | { readonly merged: false; readonly state: string };
 
 /** How a read-back names what it read, so a single PR and a stack each get their own wording. */
 interface Scope {
   /** Bottom first; the last is the PR the merge was requested on. */
-  readonly prs: readonly W.PrContext[];
+  readonly prs: readonly Pinned[];
   readonly name: (pr: W.PrContext) => string;
   readonly reread: (pr: W.PrContext) => string;
   readonly what: string;
@@ -313,15 +335,22 @@ interface MergeJob {
   readonly status: string;
   readonly uuid: string | null;
   readonly message: string;
+  /** The head the job will merge and its method; GitHub reports them on a pending job. */
+  readonly head: string | null;
+  readonly method: string | null;
 }
 
 function parseMergeJob(value: unknown): MergeJob {
   const job = record(value, "merge-async");
   const details = job.details === undefined ? {} : record(job.details, "merge-async.details");
+  const detail = (field: string): string | null =>
+    details[field] === undefined ? null : text(details[field], `merge-async.details.${field}`);
   return {
     status: text(job.status, "merge-async.status"),
-    uuid: details.uuid === undefined ? null : text(details.uuid, "merge-async.details.uuid"),
+    uuid: detail("uuid"),
     message: typeof details.message === "string" ? details.message : JSON.stringify(details),
+    head: detail("expected_head_sha"),
+    method: detail("merge_method"),
   };
 }
 
@@ -397,7 +426,7 @@ export class GhGateGitHub implements GateGitHub {
         ? await this.mergeAsync(pr, head, method)
         : { kind: "failed", detail: `gh pr merge exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}` };
     return this.settle(attempt, {
-      prs: [pr],
+      prs: [{ pr, head }],
       name: () => "PR",
       reread: () => "the PR",
       what: "it",
@@ -406,16 +435,12 @@ export class GhGateGitHub implements GateGitHub {
     });
   }
 
-  async mergeStack(
-    top: W.PrContext,
-    head: string,
-    method: MergeMethod,
-    below: readonly W.PrContext[]
-  ): Promise<MergeResult> {
-    return this.settle(await this.mergeAsync(top, head, method), {
-      prs: [...below, top],
-      name: (pr) => `#${pr.number}`,
-      reread: (pr) => `#${pr.number}`,
+  async mergeStack(range: readonly Pinned[], method: MergeMethod): Promise<MergeResult> {
+    const top = range[range.length - 1];
+    return this.settle(await this.mergeAsync(top.pr, top.head, method), {
+      prs: range,
+      name: ({ number }) => `#${number}`,
+      reread: ({ number }) => `#${number}`,
       what: "the stack",
       every: "every PR",
       command: "merge-gate --stack",
@@ -423,19 +448,32 @@ export class GhGateGitHub implements GateGitHub {
   }
 
   // A merge request can report success it did not have, or fail after merging,
-  // so the verdict comes from reading every PR back.
+  // so the verdict comes from reading every PR back. merge-async pins only the
+  // top head, so a lower PR pushed after the pre-merge check lands unpinned;
+  // the read-back catches it after the fact but cannot stop it.
   private async settle(attempt: Attempt, scope: Scope): Promise<MergeResult> {
-    const reads = await Promise.allSettled(scope.prs.map((pr) => this.outcome(pr)));
+    const reads = await Promise.allSettled(scope.prs.map(({ pr }) => this.outcome(pr)));
     const unread = reads.findIndex((read) => read.status === "rejected");
     if (unread >= 0)
       return {
         kind: "unverified",
-        detail: `${attempt.detail}, then reading ${scope.reread(scope.prs[unread])} back failed, so ${scope.what} may have merged. Rerun ${scope.command} without --merge.`,
+        detail: `${attempt.detail}, then reading ${scope.reread(scope.prs[unread].pr)} back failed, so ${scope.what} may have merged. Rerun ${scope.command} without --merge.`,
       };
     const outcomes = reads.map((read) => (read as PromiseFulfilledResult<Outcome>).value);
     const top = outcomes[outcomes.length - 1];
+    const ungated = outcomes.flatMap((outcome, index) => {
+      const { pr, head } = scope.prs[index];
+      return outcome.merged && outcome.head !== head
+        ? [`${scope.name(pr)} merged head ${outcome.head}, but merge-gate gated ${head}`]
+        : [];
+    });
+    if (ungated.length > 0)
+      return {
+        kind: "ungated",
+        detail: `${attempt.detail}; ${ungated.join("; ")}. Commits merge-gate never gated landed${top.merged && top.commit !== null ? ` in ${top.commit}` : ""}, so a human must review what merged before anything else lands.`,
+      };
     const unmerged = outcomes.flatMap((outcome, index) =>
-      outcome.merged ? [] : [`${scope.name(scope.prs[index])} is ${outcome.state}`]
+      outcome.merged ? [] : [`${scope.name(scope.prs[index].pr)} is ${outcome.state}`]
     );
     if (top.merged && unmerged.length === 0) return { kind: "merged", commit: top.commit };
     const detail = `${attempt.detail}; ${unmerged.join(", ")}`;
@@ -452,7 +490,7 @@ export class GhGateGitHub implements GateGitHub {
     const after = record(repository(await graphql(OUTCOME_QUERY, pr)).pullRequest, "pullRequest");
     const state = text(after.state, "state");
     return state === "MERGED" && optionalText(after.mergedAt, "mergedAt") !== null
-      ? { merged: true, commit: oid(after.mergeCommit, "mergeCommit") }
+      ? { merged: true, commit: oid(after.mergeCommit, "mergeCommit"), head: text(after.headRefOid, "headRefOid") }
       : { merged: false, state };
   }
 
@@ -476,34 +514,34 @@ export class GhGateGitHub implements GateGitHub {
 
   private async mergeAsync(pr: W.PrContext, head: string, method: MergeMethod): Promise<Attempt> {
     const endpoint = `repos/${pr.owner}/${pr.repo}/pulls/${pr.number}/merge-async`;
+    const put = ["api", endpoint, "-X", "PUT", "-f", `sha=${head}`, "-f", `merge_method=${method}`, "-f", "merge_action=direct_merge"];
+    const result = await gh(put);
+    const existing = result.code !== 0 && CONFLICT.test(result.stderr);
+    if (result.code !== 0 && !existing) {
+      const detail = `merge-async request failed: ${describeCommand(put)} exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}`;
+      return { kind: REJECTED.test(result.stderr) ? "failed" : "pending", detail };
+    }
     let job: MergeJob;
     try {
-      job = parseMergeJob(
-        await ghJson([
-          "api",
-          endpoint,
-          "-X",
-          "PUT",
-          "-f",
-          `sha=${head}`,
-          "-f",
-          `merge_method=${method}`,
-          "-f",
-          "merge_action=direct_merge",
-        ])
-      );
+      job = parseMergeJob(body(put, result));
     } catch (error) {
       if (!(error instanceof GitHubError)) throw error;
-      return {
-        kind: REJECTED.test(error.message) ? "failed" : "pending",
-        detail: `merge-async request failed: ${error.message}`,
-      };
+      const request = existing ? "merge-async reported an existing merge request (HTTP 409)" : "merge-async request failed";
+      return { kind: "pending", detail: `${request}: ${error.message}` };
     }
     const { uuid } = job;
     const name = uuid === null ? "merge-async" : `merge-async job ${uuid}`;
+    // An existing request for another head would merge what merge-gate did not gate.
+    if (existing && job.head !== null && job.head !== head)
+      return {
+        kind: "pending",
+        detail: `another merge request, ${name}, already exists with different options (head ${job.head}, method ${job.method ?? "unknown"}), so merge-gate did not poll it`,
+      };
     for (let poll = 0; ; poll += 1) {
       if (job.status === "merged") return { kind: "pending", detail: `${name} reported merged` };
-      if (job.status === "failed") return { kind: "failed", detail: `${name} failed: ${firstLine(job.message)}` };
+      // A 409 returns a job merge-gate did not submit, so its failure is never reported as this merge's.
+      if (job.status === "failed")
+        return { kind: existing ? "pending" : "failed", detail: `${name} failed: ${firstLine(job.message)}` };
       if (job.status !== "pending")
         return { kind: "pending", detail: `${name} reported unknown status ${job.status}` };
       if (uuid === null) return { kind: "pending", detail: "merge-async queued a job without a uuid" };
