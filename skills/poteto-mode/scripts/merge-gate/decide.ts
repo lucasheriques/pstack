@@ -24,6 +24,9 @@ export type ReasonCode =
   | "github-error"
   | "merge-failed"
   | "merge-unverified"
+  | "merged-ungated-head"
+  | "stack-changed"
+  | "method-mismatch"
   | "internal-error";
 
 export interface Reason {
@@ -74,6 +77,8 @@ export interface PrFacts {
   /** The PR's base branch and the repo's default branch; null when GitHub reports none. */
   readonly base: string | null;
   readonly defaultBranch: string | null;
+  /** The number of the native stack the PR is in, or null. */
+  readonly stack: number | null;
   readonly author: Actor | null;
   readonly reviews: readonly Review[];
   readonly reviewThreadCount: number;
@@ -81,6 +86,45 @@ export interface PrFacts {
   readonly changedFileCount: number;
   readonly files: readonly ChangedFile[];
   readonly readiness: Readiness;
+}
+
+/** The branch a PR must target: trunk, or in a native stack the head of the open PR below it. */
+export type ExpectedBase =
+  | { readonly kind: "trunk" }
+  | { readonly kind: "below"; readonly number: W.PrNumber; readonly branch: string };
+
+export const TRUNK: ExpectedBase = { kind: "trunk" };
+
+export interface StackEntry {
+  readonly position: number;
+  readonly number: W.PrNumber;
+  readonly state: "OPEN" | "CLOSED" | "MERGED";
+  readonly headRefName: string;
+  readonly baseRefName: string;
+}
+
+/** A GitHub native stack read for its PR `target`; `below` holds every entry under it, bottom first. */
+export interface NativeStack {
+  readonly number: number;
+  readonly below: readonly StackEntry[];
+  readonly target: StackEntry;
+}
+
+export interface PlannedPr {
+  readonly number: W.PrNumber;
+  readonly base: ExpectedBase;
+}
+
+/** The PRs one run gates and merges: `top` is the requested PR, `below` the open stack PRs under it. */
+export interface Plan {
+  readonly stack: number | null;
+  readonly below: readonly PlannedPr[];
+  readonly top: PlannedPr;
+}
+
+export interface Gated {
+  readonly facts: PrFacts;
+  readonly base: ExpectedBase;
 }
 
 export type MergeMethod = "squash" | "merge";
@@ -118,7 +162,7 @@ const CHECK_OUTCOME: Record<W.Check["kind"], "ok" | "failed" | "pending"> = {
 
 const reason = (code: ReasonCode, detail: string): Reason => ({ code, detail });
 
-export function decide(policy: Policy, facts: PrFacts, viewer: string): Decision {
+export function decide(policy: Policy, facts: PrFacts, viewer: string, base: ExpectedBase): Decision {
   const repo = repoPolicy(policy, facts.pr);
   const stances = latestStances(facts.reviews);
   if (repo === null)
@@ -129,11 +173,11 @@ export function decide(policy: Policy, facts: PrFacts, viewer: string): Decision
           "repo-not-allowed",
           `${facts.pr.owner}/${facts.pr.repo} matches no repos entry in the merge policy`
         ),
-        ...pullRequestReasons(facts, viewer, stances),
+        ...pullRequestReasons(facts, viewer, base, stances),
       ],
     };
   const reasons = nonEmpty([
-    ...pullRequestReasons(facts, viewer, stances),
+    ...pullRequestReasons(facts, viewer, base, stances),
     ...approvalReasons(repo, facts, stances),
   ]);
   if (reasons !== null) return { kind: "refuse", reasons };
@@ -160,6 +204,7 @@ function latestStances(reviews: readonly Review[]): readonly Stance[] {
 function pullRequestReasons(
   facts: PrFacts,
   viewer: string,
+  base: ExpectedBase,
   stances: readonly Stance[]
 ): Reason[] {
   const { readiness } = facts;
@@ -175,13 +220,12 @@ function pullRequestReasons(
         `PR author is ${facts.author?.login ?? "unknown"}, gh is authenticated as ${viewer}`
       )
     );
-  if (facts.base === null || facts.base !== facts.defaultBranch)
-    reasons.push(
-      reason(
-        "base-not-trunk",
-        `base is ${facts.base ?? "unknown"}, the default branch is ${facts.defaultBranch ?? "unknown"}`
-      )
-    );
+  const [branch, name] =
+    base.kind === "trunk"
+      ? [facts.defaultBranch, "the default branch"]
+      : [base.branch, `the head of #${base.number} below it`];
+  if (facts.base === null || facts.base !== branch)
+    reasons.push(reason("base-not-trunk", `base is ${facts.base ?? "unknown"}, ${name} is ${branch ?? "unknown"}`));
   reasons.push(...changesRequestedReasons(pr.reviewDecision, stances));
   if (readiness.kind === "open" || readiness.kind === "no-checks")
     reasons.push(
@@ -309,4 +353,77 @@ function humanApprovedHead(facts: PrFacts, stances: readonly Stance[]): boolean 
       review.author.login !== facts.author?.login &&
       WRITE_ACCESS.has(review.authorAssociation)
   );
+}
+
+export const plainPlan = (number: W.PrNumber): Plan => ({ stack: null, below: [], top: { number, base: TRUNK } });
+
+// Merged entries below the target are already in trunk. Each open PR must sit
+// on the open PR directly below it, and the lowest on trunk, because
+// merge-async lands the whole range into the stack's base in one go.
+export function planStack(stack: NativeStack): { readonly plan: Plan; readonly reasons: readonly Reason[] } {
+  const open = stack.below.filter((entry) => entry.state === "OPEN");
+  const base = (under: StackEntry | undefined): ExpectedBase =>
+    under === undefined ? TRUNK : { kind: "below", number: under.number, branch: under.headRefName };
+  return {
+    plan: {
+      stack: stack.number,
+      below: open.map((entry, index) => ({ number: entry.number, base: base(open[index - 1]) })),
+      top: { number: stack.target.number, base: base(open.at(-1)) },
+    },
+    reasons: [...stack.below.filter((entry) => entry.state === "CLOSED"), ...(stack.target.state === "OPEN" ? [] : [stack.target])].map(
+      (entry) => reason("not-open", `#${entry.number}: PR is ${entry.state.toLowerCase()}`)
+    ),
+  };
+}
+
+/** Gates every PR of a plan; it merges only when all pass and agree on the method. */
+export function decidePlan(
+  policy: Policy,
+  viewer: string,
+  stack: number | null,
+  below: readonly Gated[],
+  top: Gated
+): Decision {
+  const verdicts = [...below, top].map(({ facts, base }) => ({ facts, decision: decide(policy, facts, viewer, base) }));
+  const reasons = nonEmpty(
+    verdicts.flatMap(({ facts, decision }) =>
+      decision.kind === "merge"
+        ? []
+        : decision.reasons.map((refusal) =>
+            stack === null ? withStackHint(refusal, facts) : { ...refusal, detail: `#${facts.pr.number}: ${refusal.detail}` }
+          )
+    )
+  );
+  if (reasons !== null) return { kind: "refuse", reasons };
+  const methods = verdicts.flatMap(({ facts, decision }) =>
+    decision.kind === "merge" ? [{ number: facts.pr.number, method: decision.method }] : []
+  );
+  // One merge-async call lands the whole range with a single method.
+  if (new Set(methods.map(({ method }) => method)).size === 1) return verdicts[verdicts.length - 1].decision;
+  const each = methods.map(({ number, method }) => `#${number} uses ${method}`).join(", ");
+  return { kind: "refuse", reasons: [reason("method-mismatch", `one call merges the range with one method, but ${each}`)] };
+}
+
+// A PR inserted, merged, closed or retargeted after gating changes what one
+// merge-async call lands, so the stack read again just before merging must
+// list the gated PRs, open and in order, each on the base it was gated on.
+export function stackChange(gated: NativeStack, plan: Plan, trunk: string | null, now: NativeStack | null): Reason | null {
+  const expected = new Map([...plan.below, plan.top].map(({ number, base }) => [number, base.kind === "trunk" ? trunk : base.branch]));
+  const describe = (stack: NativeStack, base: (entry: StackEntry) => string | null | undefined): string =>
+    [...stack.below, stack.target]
+      .filter((entry) => entry.state !== "MERGED")
+      .map((entry) => `#${entry.number} (${entry.state.toLowerCase()}, ${entry.headRefName}) on ${base(entry) ?? "unknown"}`)
+      .join(", ");
+  const planned = describe(gated, (entry) => expected.get(entry.number));
+  if (now?.number === gated.number && describe(now, (entry) => entry.baseRefName) === planned) return null;
+  return reason(
+    "stack-changed",
+    `stack #${gated.number} changed after gating: gated ${planned}; now ${now === null ? "the PR is in no stack" : `stack #${now.number} lists ${describe(now, (entry) => entry.baseRefName)}`}`
+  );
+}
+
+function withStackHint(refusal: Reason, facts: PrFacts): Reason {
+  return refusal.code === "base-not-trunk" && facts.stack !== null
+    ? { ...refusal, detail: `${refusal.detail}; PR is in native stack #${facts.stack}, so rerun with --stack to gate it with the PRs below it` }
+    : refusal;
 }

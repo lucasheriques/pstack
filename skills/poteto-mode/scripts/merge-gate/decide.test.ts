@@ -11,10 +11,17 @@ import type {
 import { parsePrNumber } from "../watch-pr/types.ts";
 import {
   type Decision,
+  type ExpectedBase,
+  type NativeStack,
   type PrFacts,
   type Readiness,
+  type ReasonCode,
   type Review,
+  type StackEntry,
+  TRUNK,
   decide,
+  decidePlan,
+  planStack,
 } from "./decide.ts";
 import { parsePolicy } from "./policy.ts";
 
@@ -111,6 +118,7 @@ interface Scenario {
   readonly ci?: CiState;
   readonly threads?: readonly ReviewThread[];
   readonly paths?: readonly string[];
+  readonly base?: ExpectedBase;
 }
 
 function run(scenario: Scenario = {}): Decision {
@@ -148,24 +156,22 @@ function run(scenario: Scenario = {}): Decision {
     path,
     previousPath: null,
   }));
-  return decide(
-    policy,
-    {
-      pr: context,
-      head: HEAD,
-      base: "main",
-      defaultBranch: "main",
-      author: { login: "agent", type: "User" },
-      reviews: [],
-      reviewThreadCount: threads.length,
-      reviewCount: 0,
-      changedFileCount: files.length,
-      files,
-      readiness,
-      ...scenario.facts,
-    },
-    scenario.viewer ?? "agent"
-  );
+  const prFacts: PrFacts = {
+    pr: context,
+    head: HEAD,
+    base: "main",
+    defaultBranch: "main",
+    stack: null,
+    author: { login: "agent", type: "User" },
+    reviews: [],
+    reviewThreadCount: threads.length,
+    reviewCount: 0,
+    changedFileCount: files.length,
+    files,
+    readiness,
+    ...scenario.facts,
+  };
+  return decide(policy, prFacts, scenario.viewer ?? "agent", scenario.base ?? TRUNK);
 }
 
 const codes = (decision: Decision): readonly string[] =>
@@ -352,5 +358,190 @@ describe("merge method", () => {
     ["acme/other", "sync/upstream", ["merge:squash"]],
   ])("%s head %s", (repo, headRefName, expected) => {
     expect(codes(run({ repo, pr: { headRefName } }))).toEqual(expected);
+  });
+});
+
+describe("expected base", () => {
+  const below: ExpectedBase = { kind: "below", number: parsePrNumber(6), branch: "feature-6" };
+  it.each<[string, Scenario, Decision]>([
+    ["accepts a stacked PR whose base is the head below it", { facts: { base: "feature-6" }, base: below }, { kind: "merge", method: "squash" }],
+    [
+      "refuses a stacked PR whose base is not the head below it",
+      { facts: { base: "feature-5" }, base: below },
+      { kind: "refuse", reasons: [{ code: "base-not-trunk", detail: "base is feature-5, the head of #6 below it is feature-6" }] },
+    ],
+    [
+      "refuses trunk when the head below it is expected",
+      { base: below },
+      { kind: "refuse", reasons: [{ code: "base-not-trunk", detail: "base is main, the head of #6 below it is feature-6" }] },
+    ],
+    [
+      "names the default branch for a plain PR",
+      { facts: { base: "release" } },
+      { kind: "refuse", reasons: [{ code: "base-not-trunk", detail: "base is release, the default branch is main" }] },
+    ],
+  ])("%s", (_name, scenario, expected) => {
+    expect(run(scenario)).toEqual(expected);
+  });
+});
+
+/** Stack fixtures put PR #(position + 4) at each position, on branch feature-(number). */
+const prAt = (position: number) => parsePrNumber(position + 4);
+const entry = (position: number, state: StackEntry["state"] = "OPEN"): StackEntry => ({
+  position,
+  number: prAt(position),
+  state,
+  headRefName: `feature-${prAt(position)}`,
+  baseRefName: position === 1 ? "main" : `feature-${prAt(position - 1)}`,
+});
+const onTop = (position: number): ExpectedBase => ({ kind: "below", number: prAt(position), branch: `feature-${prAt(position)}` });
+
+describe("planStack", () => {
+  const stack = (states: readonly StackEntry["state"][]): NativeStack => ({
+    number: 42,
+    below: states.slice(0, -1).map((state, index) => entry(index + 1, state)),
+    target: entry(states.length, states.at(-1)),
+  });
+  it.each<{ name: string; states: readonly StackEntry["state"][]; below: readonly [number, ExpectedBase][]; top: ExpectedBase; reasons: readonly string[] }>([
+    {
+      name: "gates every PR below the target, each against the head below it",
+      states: ["OPEN", "OPEN", "OPEN"],
+      below: [[1, TRUNK], [2, onTop(1)]],
+      top: onTop(2),
+      reasons: [],
+    },
+    {
+      name: "skips a merged lower entry and expects trunk under the lowest open one",
+      states: ["MERGED", "OPEN", "OPEN"],
+      below: [[2, TRUNK]],
+      top: onTop(2),
+      reasons: [],
+    },
+    { name: "gates a target at position 1 alone", states: ["OPEN"], below: [], top: TRUNK, reasons: [] },
+    {
+      name: "refuses a closed lower entry",
+      states: ["CLOSED", "OPEN", "OPEN"],
+      below: [[2, TRUNK]],
+      top: onTop(2),
+      reasons: ["#5: PR is closed"],
+    },
+    { name: "refuses a merged target", states: ["MERGED", "MERGED"], below: [], top: TRUNK, reasons: ["#6: PR is merged"] },
+  ])("$name", ({ states, below, top, reasons }) => {
+    expect(planStack(stack(states))).toEqual({
+      plan: {
+        stack: 42,
+        below: below.map(([position, base]) => ({ number: prAt(position), base })),
+        top: { number: prAt(states.length), base: top },
+      },
+      reasons: reasons.map((detail) => ({ code: "not-open", detail })),
+    });
+  });
+});
+
+describe("decidePlan", () => {
+  const gated = (position: number, base: ExpectedBase, facts: Partial<PrFacts> = {}, branch = `feature-${prAt(position)}`) => ({
+    base,
+    facts: {
+      pr: { owner: "acme", repo: "app", number: prAt(position) },
+      head: HEAD,
+      base: base.kind === "trunk" ? "main" : base.branch,
+      defaultBranch: "main",
+      stack: 42,
+      author: { login: "agent", type: "User" },
+      reviews: [],
+      reviewThreadCount: 0,
+      reviewCount: 0,
+      changedFileCount: 1,
+      files: [{ path: "src/index.ts", previousPath: null }],
+      readiness: {
+        kind: "open",
+        context: { owner: "acme", repo: "app", number: prAt(position) },
+        facts: {
+          context: { owner: "acme", repo: "app", number: prAt(position) },
+          mergeable: "MERGEABLE",
+          mergeStateStatus: "CLEAN",
+          reviewDecision: null,
+          headRefOid: HEAD,
+          headRefName: branch,
+          baseRefName: base.kind === "trunk" ? "main" : base.branch,
+          state: "OPEN",
+          mergedAt: null,
+          isDraft: false,
+        },
+        threads: [],
+        ci: clean([passingCheck()]),
+        reviewAutomationRunning: false,
+      },
+      ...facts,
+    } satisfies PrFacts,
+  });
+  it.each<{ name: string; stack: number | null; below: readonly ReturnType<typeof gated>[]; top: ReturnType<typeof gated>; expected: Decision }>([
+    {
+      name: "merges a stack whose every PR passes",
+      stack: 42,
+      below: [gated(1, TRUNK), gated(2, onTop(1))],
+      top: gated(3, onTop(2)),
+      expected: { kind: "merge", method: "squash" },
+    },
+    {
+      name: "refuses a stack whose PRs call for different merge methods",
+      stack: 42,
+      below: [gated(1, TRUNK), gated(2, onTop(1), {}, "sync/upstream")],
+      top: gated(3, onTop(2)),
+      expected: {
+        kind: "refuse",
+        reasons: [
+          {
+            code: "method-mismatch",
+            detail: "one call merges the range with one method, but #5 uses squash, #6 uses merge, #7 uses squash",
+          },
+        ],
+      },
+    },
+    {
+      name: "merges a stack with a merge commit when every PR calls for one",
+      stack: 42,
+      below: [gated(1, TRUNK, {}, "sync/a")],
+      top: gated(2, onTop(1), {}, "sync/b"),
+      expected: { kind: "merge", method: "merge" },
+    },
+    {
+      name: "tags each refusal with its PR in a stack",
+      stack: 42,
+      below: [gated(1, TRUNK, { base: "release" }), gated(2, onTop(1))],
+      top: gated(3, onTop(2), { base: "feature-5" }),
+      expected: {
+        kind: "refuse",
+        reasons: [
+          { code: "base-not-trunk", detail: "#5: base is release, the default branch is main" },
+          { code: "base-not-trunk", detail: "#7: base is feature-5, the head of #6 below it is feature-6" },
+        ],
+      },
+    },
+    {
+      name: "points a plain run on a stacked PR at --stack",
+      stack: null,
+      below: [],
+      top: gated(3, TRUNK, { base: "feature-6" }),
+      expected: {
+        kind: "refuse",
+        reasons: [
+          {
+            code: "base-not-trunk",
+            detail:
+              "base is feature-6, the default branch is main; PR is in native stack #42, so rerun with --stack to gate it with the PRs below it",
+          },
+        ],
+      },
+    },
+    {
+      name: "gives no hint for a plain PR outside a stack",
+      stack: null,
+      below: [],
+      top: gated(3, TRUNK, { base: "release", stack: null }),
+      expected: { kind: "refuse", reasons: [{ code: "base-not-trunk", detail: "base is release, the default branch is main" }] },
+    },
+  ])("$name", ({ stack, below, top, expected }) => {
+    expect(decidePlan(policy, "agent", stack, below, top)).toEqual(expected);
   });
 });
