@@ -531,8 +531,11 @@ export class GhGateGitHub implements GateGitHub {
     }
     const { uuid } = job;
     const name = uuid === null ? "merge-async" : `merge-async job ${uuid}`;
-    // An existing request for another head would merge what merge-gate did not gate.
-    if (existing && job.head !== null && job.head !== head)
+    // An existing request for another head would merge what merge-gate did not gate, and one with
+    // another method would land it in a way the policy did not choose.
+    const foreignHead = job.head !== null && job.head !== head;
+    const foreignMethod = job.method !== null && job.method !== method;
+    if (existing && (foreignHead || foreignMethod))
       return {
         kind: "pending",
         detail: `another merge request, ${name}, already exists with different options (head ${job.head}, method ${job.method ?? "unknown"}), so merge-gate did not poll it`,

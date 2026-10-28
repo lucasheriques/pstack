@@ -236,10 +236,10 @@ const asyncPut = [
   "merge_action=direct_merge",
 ];
 const asyncPoll = ["api", `repos/acme/app/pulls/7/merge-async/${JOB}`];
-const existingRequest = (head: string): FakeResponse => ({
+const existingRequest = (head: string, method = head === HEAD ? "squash" : "merge"): FakeResponse => ({
   stdout: {
     status: "pending",
-    details: { message: "Merge request already exists.", uuid: JOB, merge_method: head === HEAD ? "squash" : "merge", expected_head_sha: head },
+    details: { message: "Merge request already exists.", uuid: JOB, merge_method: method, expected_head_sha: head },
   },
 });
 
@@ -469,6 +469,20 @@ describe("merge-gate CLI against a fake gh", () => {
       refused(
         "merge-unverified",
         `another merge request, merge-async job ${JOB}, already exists with different options (head ${MOVED}, method merge), so merge-gate did not poll it${UNSETTLED}`
+      ),
+      [squash, asyncPut],
+    ],
+    [
+      "reports an unverified merge when a 409 returns a request for the gated head with another method",
+      {
+        merge: [STACKED],
+        asyncMerge: [{ ...existingRequest(HEAD, "merge"), stderr: "gh: HTTP 409 (HTTP 409)\n", exit: 1 }],
+        ...open,
+      },
+      1,
+      refused(
+        "merge-unverified",
+        `another merge request, merge-async job ${JOB}, already exists with different options (head ${HEAD}, method merge), so merge-gate did not poll it${UNSETTLED}`
       ),
       [squash, asyncPut],
     ],
