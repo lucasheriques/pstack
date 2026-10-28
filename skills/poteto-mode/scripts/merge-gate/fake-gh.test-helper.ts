@@ -10,11 +10,12 @@ export interface FakeResponse {
 }
 
 /**
- * Each rule answers the gh invocations whose joined argv contains `match`.
+ * Each rule answers the gh invocations whose joined argv contains `match`,
+ * or every string in it.
  * Responses are served in order and the last one repeats, which is how a
  * scenario makes the head move between the read and the merge.
  */
-export type FakeRule = readonly [match: string, responses: readonly FakeResponse[]];
+export type FakeRule = readonly [match: string | readonly string[], responses: readonly FakeResponse[]];
 
 export interface FakeGh {
   readonly directory: string;
@@ -27,25 +28,32 @@ export async function fakeGh(rules: readonly FakeRule[]): Promise<FakeGh> {
   const directory = await mkdtemp(join(tmpdir(), "merge-gate-test-"));
   const bin = join(directory, "bin");
   const log = join(directory, "calls.ndjson");
-  const counts = join(directory, "counts.json");
+  const slots = join(directory, "slots");
   await Bun.write(join(directory, "rules.json"), JSON.stringify(rules));
   await Bun.write(
     join(bin, "gh"),
     `#!${process.execPath}
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 const args = process.argv.slice(2);
 appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + "\\n");
 const rules = JSON.parse(readFileSync(${JSON.stringify(join(directory, "rules.json"))}, "utf8"));
 const line = args.join(" ");
-const index = rules.findIndex(([match]) => line.includes(match));
+const index = rules.findIndex(([match]) => [match].flat().every((part) => line.includes(part)));
 if (index < 0) {
   process.stderr.write("unexpected gh arguments: " + line + "\\n");
   process.exit(97);
 }
-const counts = existsSync(${JSON.stringify(counts)}) ? JSON.parse(readFileSync(${JSON.stringify(counts)}, "utf8")) : {};
-const seen = counts[index] ?? 0;
-counts[index] = seen + 1;
-writeFileSync(${JSON.stringify(counts)}, JSON.stringify(counts));
+// merge-gate runs gh calls concurrently; mkdir claims each call's slot atomically.
+mkdirSync(${JSON.stringify(slots)}, { recursive: true });
+let seen = 0;
+for (;;) {
+  try {
+    mkdirSync(${JSON.stringify(slots)} + "/" + index + "-" + seen);
+    break;
+  } catch {
+    seen += 1;
+  }
+}
 const responses = rules[index][1];
 const response = responses[Math.min(seen, responses.length - 1)];
 if (response.stdout !== undefined)

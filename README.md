@@ -69,7 +69,7 @@ mkdir -p ~/.claude/pstack && [ -e ~/.claude/pstack/merge-policy.json ] || curl -
 
 Edit it for your repos. Both `defaults.humanOnly` and `repos` are required, and a repo with no entry is refused. `humanOnly` globs mark paths that need a human's approval on the exact head commit before the agent merges. The approver must be a collaborator other than the PR author, so on a solo repo those paths mean you merge them yourself. `requireHumanApprovalOnHead` asks for that approval on every PR in the repo. `mergeCommitBranches` lists branch globs that merge with a merge commit instead of a squash.
 
-`merge-gate` also refuses unless `gh` is signed in as the PR author, the PR targets the default branch (so upper PRs in a stack wait for their turn), and the head has passing checks. A repo with no CI is refused with `checks-missing`.
+`merge-gate` also refuses unless `gh` is signed in as the PR author, the PR targets the default branch (so upper PRs in a stack wait for their turn), and the head has passing checks. A repo with no CI is refused with `checks-missing`. For a GitHub native stack, `merge-gate <pr> --stack --merge` gates every open PR from the bottom up to `<pr>`, each based on the one below it, and merges them together.
 
 ## Differences from upstream
 

@@ -1,14 +1,17 @@
 import { ChecksUnavailable, GhGitHubReader, resolveReviewThreads } from "../watch-pr/github.ts";
 import { readSnapshot } from "../watch-pr/policy.ts";
 import type * as W from "../watch-pr/types.ts";
+import { parsePrNumber } from "../watch-pr/types.ts";
 import type {
   Actor,
   ChangedFile,
   MergeMethod,
+  NativeStack,
   PrFacts,
   Readiness,
   Review,
   ReviewState,
+  StackEntry,
 } from "./decide.ts";
 
 /** What GitHub reports after the merge request, whatever the request itself said. */
@@ -23,6 +26,10 @@ export interface GateGitHub {
   facts(target: W.PrContext): Promise<PrFacts>;
   head(pr: W.PrContext): Promise<string | null>;
   merge(pr: W.PrContext, head: string, method: MergeMethod): Promise<MergeResult>;
+  /** The native stack `pr` belongs to, or null when it is in none. */
+  stack(pr: W.PrContext): Promise<NativeStack | null>;
+  /** One merge-async call on `top`, which lands every PR below it too; `below` is read back to confirm. */
+  mergeStack(top: W.PrContext, head: string, method: MergeMethod, below: readonly W.PrContext[]): Promise<MergeResult>;
 }
 
 /** A gh call failed or answered with a shape merge-gate does not recognize. */
@@ -41,6 +48,7 @@ query MergeGatePr($owner: String!, $repo: String!, $pr: Int!) {
     pullRequest(number: $pr) {
       headRefOid
       baseRefName
+      stack { number }
       changedFiles
       author { __typename login }
       reviewThreads { totalCount }
@@ -68,6 +76,23 @@ query MergeGateOutcome($owner: String!, $repo: String!, $pr: Int!) {
   }
 }
 `;
+const STACK_QUERY = `
+query MergeGateStack($owner: String!, $repo: String!, $pr: Int!, $after: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      stack {
+        number
+        entries(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { position pullRequest { number state headRefName } }
+        }
+      }
+    }
+  }
+}
+`;
+const MAX_STACK_PAGES = 10;
+const ENTRY_STATES = ["OPEN", "CLOSED", "MERGED"] as const satisfies readonly StackEntry["state"][];
 /** GitHub refuses `gh pr merge` for a PR in a native stack and wants its merge-async endpoint. */
 const STACKED = /part of a stack/;
 /** Keeps a stuck job well inside an agent's two-minute command timeout. */
@@ -114,7 +139,7 @@ async function gh(args: readonly string[]): Promise<CommandResult> {
 
 const firstLine = (text: string): string => (text.trim().split(/\r?\n/, 1)[0] ?? "").slice(0, 240);
 
-function graphql(query: string, pr: W.PrContext): Promise<unknown> {
+function graphql(query: string, pr: W.PrContext, cursor: string | null = null): Promise<unknown> {
   return ghJson([
     "api",
     "graphql",
@@ -126,6 +151,7 @@ function graphql(query: string, pr: W.PrContext): Promise<unknown> {
     `repo=${pr.repo}`,
     "-F",
     `pr=${pr.number}`,
+    ...(cursor === null ? [] : ["-f", `after=${cursor}`]),
   ]);
 }
 
@@ -165,6 +191,13 @@ function count(value: unknown, path: string): number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0
     ? value
     : invalid(path, value);
+}
+function prNumber(value: unknown, path: string): W.PrNumber {
+  try {
+    return parsePrNumber(value);
+  } catch {
+    return invalid(path, value);
+  }
 }
 function actor(value: unknown, path: string): Actor | null {
   if (value === null) return null;
@@ -214,6 +247,7 @@ export function parsePullRequest(
       repo.defaultBranchRef === null
         ? null
         : text(record(repo.defaultBranchRef, "defaultBranchRef").name, "defaultBranchRef.name"),
+    stack: pr.stack === null ? null : count(record(pr.stack, "stack").number, "stack.number"),
     author: actor(pr.author, "author"),
     reviews: list(record(pr.reviews, "reviews").nodes, "reviews.nodes").map(parseReview),
     reviewCount: count(record(pr.reviews, "reviews").totalCount, "reviews.totalCount"),
@@ -234,6 +268,45 @@ function parseFile(value: unknown, index: number): ChangedFile {
         ? null
         : text(object.previous_filename, `files[${index}].previous_filename`),
   };
+}
+
+function parseStackEntry(value: unknown, index: number): StackEntry {
+  const path = `stack.entries[${index}]`;
+  const object = record(value, path);
+  const pr = record(object.pullRequest, `${path}.pullRequest`);
+  return {
+    position: count(object.position, `${path}.position`),
+    number: prNumber(pr.number, `${path}.pullRequest.number`),
+    state: ENTRY_STATES.find((state) => state === pr.state) ?? invalid(`${path}.pullRequest.state`, pr.state),
+    headRefName: text(pr.headRefName, `${path}.pullRequest.headRefName`),
+  };
+}
+
+/** A merged PR carries its merge commit; any other state is reported as GitHub names it. */
+type Outcome = { readonly merged: true; readonly commit: string | null } | { readonly merged: false; readonly state: string };
+
+/** How a read-back names what it read, so a single PR and a stack each get their own wording. */
+interface Scope {
+  /** Bottom first; the last is the PR the merge was requested on. */
+  readonly prs: readonly W.PrContext[];
+  readonly name: (pr: W.PrContext) => string;
+  readonly reread: (pr: W.PrContext) => string;
+  readonly what: string;
+  readonly every: string;
+  readonly command: string;
+}
+
+// Entries arrive in pages; positions must run 1..n with no gap, and the target
+// must be among them, or the read is incomplete.
+function nativeStack(number: number, target: W.PrNumber, entries: readonly StackEntry[]): NativeStack {
+  const sorted = [...entries].sort((a, b) => a.position - b.position);
+  const index = sorted.findIndex((entry) => entry.number === target);
+  const top = sorted[index];
+  if (top === undefined || sorted.some((entry, position) => entry.position !== position + 1))
+    throw new GitHubError(
+      `stack #${number} lists positions ${sorted.map((entry) => entry.position).join(", ")}${top === undefined ? ` without #${target}` : ""}`
+    );
+  return { number, below: sorted.slice(0, index), target: top };
 }
 
 interface MergeJob {
@@ -323,24 +396,82 @@ export class GhGateGitHub implements GateGitHub {
       result.code !== 0 && STACKED.test(result.stderr)
         ? await this.mergeAsync(pr, head, method)
         : { kind: "failed", detail: `gh pr merge exited ${result.code}: ${firstLine(result.stderr) || "no stderr"}` };
-    let state: string;
-    try {
-      const after = record(repository(await graphql(OUTCOME_QUERY, pr)).pullRequest, "pullRequest");
-      state = text(after.state, "state");
-      if (state === "MERGED" && optionalText(after.mergedAt, "mergedAt") !== null)
-        return { kind: "merged", commit: oid(after.mergeCommit, "mergeCommit") };
-    } catch {
+    return this.settle(attempt, {
+      prs: [pr],
+      name: () => "PR",
+      reread: () => "the PR",
+      what: "it",
+      every: "it",
+      command: "merge-gate",
+    });
+  }
+
+  async mergeStack(
+    top: W.PrContext,
+    head: string,
+    method: MergeMethod,
+    below: readonly W.PrContext[]
+  ): Promise<MergeResult> {
+    return this.settle(await this.mergeAsync(top, head, method), {
+      prs: [...below, top],
+      name: (pr) => `#${pr.number}`,
+      reread: (pr) => `#${pr.number}`,
+      what: "the stack",
+      every: "every PR",
+      command: "merge-gate --stack",
+    });
+  }
+
+  // A merge request can report success it did not have, or fail after merging,
+  // so the verdict comes from reading every PR back.
+  private async settle(attempt: Attempt, scope: Scope): Promise<MergeResult> {
+    const reads = await Promise.allSettled(scope.prs.map((pr) => this.outcome(pr)));
+    const unread = reads.findIndex((read) => read.status === "rejected");
+    if (unread >= 0)
       return {
         kind: "unverified",
-        detail: `${attempt.detail}, then reading the PR back failed, so it may have merged. Rerun merge-gate without --merge.`,
+        detail: `${attempt.detail}, then reading ${scope.reread(scope.prs[unread])} back failed, so ${scope.what} may have merged. Rerun ${scope.command} without --merge.`,
       };
-    }
-    return attempt.kind === "pending"
-      ? {
+    const outcomes = reads.map((read) => (read as PromiseFulfilledResult<Outcome>).value);
+    const top = outcomes[outcomes.length - 1];
+    const unmerged = outcomes.flatMap((outcome, index) =>
+      outcome.merged ? [] : [`${scope.name(scope.prs[index])} is ${outcome.state}`]
+    );
+    if (top.merged && unmerged.length === 0) return { kind: "merged", commit: top.commit };
+    const detail = `${attempt.detail}; ${unmerged.join(", ")}`;
+    // merge-async is atomic, so a failed job that left every PR open merged nothing.
+    return attempt.kind === "failed" && unmerged.length === scope.prs.length
+      ? { kind: "failed", detail }
+      : {
           kind: "unverified",
-          detail: `${attempt.detail}; PR is ${state}, so it may still merge. Wait for gh pr view to show it settled before rerunning merge-gate --merge.`,
-        }
-      : { kind: "failed", detail: `${attempt.detail}; PR is ${state}` };
+          detail: `${detail}, so ${scope.what} may still merge. Wait for gh pr view to show ${scope.every} settled before rerunning ${scope.command} --merge.`,
+        };
+  }
+
+  private async outcome(pr: W.PrContext): Promise<Outcome> {
+    const after = record(repository(await graphql(OUTCOME_QUERY, pr)).pullRequest, "pullRequest");
+    const state = text(after.state, "state");
+    return state === "MERGED" && optionalText(after.mergedAt, "mergedAt") !== null
+      ? { merged: true, commit: oid(after.mergeCommit, "mergeCommit") }
+      : { merged: false, state };
+  }
+
+  async stack(pr: W.PrContext): Promise<NativeStack | null> {
+    const entries: StackEntry[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_STACK_PAGES; page += 1) {
+      const pull = record(repository(await graphql(STACK_QUERY, pr, cursor)).pullRequest, "pullRequest");
+      if (pull.stack === null) return null;
+      const stack = record(pull.stack, "stack");
+      const connection = record(stack.entries, "stack.entries");
+      entries.push(
+        ...list(connection.nodes, "stack.entries.nodes").map((entry, index) => parseStackEntry(entry, entries.length + index))
+      );
+      const pageInfo = record(connection.pageInfo, "stack.entries.pageInfo");
+      if (pageInfo.hasNextPage !== true) return nativeStack(count(stack.number, "stack.number"), pr.number, entries);
+      cursor = text(pageInfo.endCursor, "stack.entries.pageInfo.endCursor");
+    }
+    throw new GitHubError(`stack entries for #${pr.number} exceed ${MAX_STACK_PAGES} pages`);
   }
 
   private async mergeAsync(pr: W.PrContext, head: string, method: MergeMethod): Promise<Attempt> {
