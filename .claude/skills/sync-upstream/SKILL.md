@@ -21,7 +21,7 @@ This repo is two branches. `upstream` is a verbatim mirror of `cursor/plugins/ps
 5. **Lint to zero.** Run `bun scripts/check-port.ts` and translate every finding. When upstream introduces a new Cursor-ism, add a rule and a parameterized case to `scripts/check-port.test.ts` first, then translate.
 6. **Verify.**
    - `bun test ./scripts/check-port.test.ts`
-   - `cd skills/poteto-mode/scripts && bun test orch watch-pr`
+   - `cd skills/poteto-mode/scripts && bun run test`
    - `claude plugin validate .`. Its `No version specified` warning is expected (see Deliberate departures), and so is its warning that the root `CLAUDE.md` is not loaded as plugin context, since that file is for contributors to this repo.
    - `claude -p --plugin-dir . "/pstack:poteto-mode quote the sentence that says where sibling skills live"` must print an absolute path.
    - `claude -p --plugin-dir . "Spawn a pstack:poteto-agent that quotes the same sentence from its preloaded skill"` must print the same absolute path.

@@ -85,7 +85,7 @@ describe("findingsFor", () => {
     ["a principle entry that names its file", "skills/poteto-mode/SKILL.md", "## Principles\n\n- **Sequence Work into Verifiable Units** (**principle-sequence-verifiable-units**). Multi-step work."],
     ["a step range that exists", "skills/x/SKILL.md", "Run Opening a PR steps 1 to 3."],
     ["a step named after its playbook", "skills/x/SKILL.md", "Use step 2 of the Perf issue playbook."],
-    ["a step that exists by path", "skills/poteto-mode/playbooks/babysit.md", "Publish it per `playbooks/autopilot-stack.md` step 3."],
+    ["a step that exists by path", "skills/poteto-mode/playbooks/babysit.md", "Publish it per `playbooks/autopilot-stack.md` step 2."],
     ["a step that exists by title", "skills/x/SKILL.md", "Run Opening a PR step 2."],
     ["a bold bullet outside both indexes", "skills/poteto-mode/SKILL.md", "## Autonomy\n\n- **Made Up Thing.** Something."],
     ["a playbook title that resolves", "skills/poteto-mode/SKILL.md", "## Playbooks\n\n- **Opening a PR.** Invoked at the end."],
