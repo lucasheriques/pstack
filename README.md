@@ -37,8 +37,9 @@ You can also call the other skills directly:
 | `recall` | you're resuming work and want your recent context rebuilt from past sessions |
 | `bro` | you want the last message restated in plain language |
 | `ketchup` | you want a short catch-up on what changed since your last message, with what still needs you |
+| `ketchup-video` | you want the `ketchup` catch-up as a short subtitled video of slides, with the calls waiting on you as text under it |
 | `in-your-own-words` | you want the agent to play back your goal and the problem before it starts |
-| `sharpen` | you want a task approached the way a top expert would, without overspecifying it |
+| `sharpen` | you want a prompt made deeper, not bigger, before you send it. It returns the rewritten prompt and doesn't do the task |
 | `correct` | agents keep repeating the same mistake in a repo and each one should become impossible |
 | `benchmark-checklist` | you ran a benchmark and want the measurement vetted before you report it |
 | `poteto-help` | you're new to pstack or unsure which skill fits. Type `/pstack:poteto-help` with a question |
@@ -46,7 +47,7 @@ You can also call the other skills directly:
 | `architect` | code crosses a function boundary and the caller's shape should be settled first |
 | `arena` | you want several parallel attempts at the same thing, then the best parts of each |
 | `swarm` | you want parallel workers over different slices, then one report |
-| `interrogate` | a diff needs adversarial review. It is also the pre-PR gate |
+| `interrogate` | a diff needs adversarial review, where only findings a run proves survive. It is also the pre-PR gate |
 | `tdd` | a bug has a cheap local test path |
 | `no-comments` | strip the comments this change added before review |
 | `unslop`, `technical-writing` | prose, docs, PR descriptions, commit messages |
@@ -55,6 +56,8 @@ You can also call the other skills directly:
 | `show-me-your-work` | long or unattended runs that need a decision trail |
 | `reflect` | a long task landed and the lesson should become a skill edit |
 | `create-verification-skill`, `maintain-verification-skill` | a project needs a scripted way to prove app behavior |
+| `create-formal-verification-skill`, `maintain-formal-verification-skill` | a race, invariant, or other property needs proof past what tests reach |
+| `statechart` | you want a TLA+ model drawn as a chart a PM or designer can read, with the shortest path to each state that breaks a rule |
 | `automate-me` | you want your own `<name>-mode` skill drafted from how you work |
 
 The 24 principles live in `skills/poteto-mode/principles/`. poteto-mode reads them on demand instead of loading them into every session.

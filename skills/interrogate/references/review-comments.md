@@ -15,8 +15,8 @@ Comments on someone else's PR are read by a person. A false positive wastes thei
 
 Prefix every comment so the author can triage:
 
-- `blocking:` must change before merge (Act on: a bug, security, data loss, a broken contract).
-- `question:` the author may have context you lack (most Consider findings and most design findings).
+- `blocking:` must change before merge (a verified finding: a bug, security, data loss, a broken contract).
+- `question:` the author may have context you lack (a design concern no run proved, or a finding that depends on intent you cannot confirm).
 - `nit:` optional. Group nits so they don't read as a takedown.
 - `praise:` genuinely good work worth keeping.
 
