@@ -1,6 +1,6 @@
 # Blind-spot Lenses
 
-Diff-scoped review sees what a hunk gets wrong. It cannot see what is missing, because no line is wrong. These lenses cover that gap. The lead picks the ones the change calls for. Correctness review does not cover them on its own.
+Diff-scoped review sees what a hunk gets wrong. It cannot see what is missing, because no line is wrong. These lenses cover that gap. Frame takes every lens whose "Use when" the change meets. Correctness review does not cover them on its own.
 
 ## Parity
 
@@ -16,7 +16,7 @@ Use when options or features can combine, or a resource has a create, use, dispo
 
 ## Exposure
 
-Use when the change writes anything that leaves the process: telemetry, logs, error reports, responses, files. List every value the change sends to such a destination and trace each one back to its source. Put a canary secret in each untrusted input, including metadata, headers, identifiers, URLs, and error text, and run every path that writes to the destination, not only the new one. Report every place the canary arrives unredacted, and every new field that skips the redaction the existing fields pass through.
+Use when the change adds or reshapes a value that leaves the process: telemetry, logs, error reports, responses, files. Trace each such value back to its source. Put a canary secret in each untrusted input that feeds it, including metadata, headers, identifiers, URLs, and error text, and run every path the change adds or alters that writes it out. Report every place the canary arrives unredacted, and every new value that skips the redaction its neighbors in the same payload pass through.
 
 ## Isolation
 
