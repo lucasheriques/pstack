@@ -1,6 +1,6 @@
 # Blind-spot Lenses
 
-Diff-scoped review sees what a hunk gets wrong. It cannot see what is missing, because no line is wrong. These lenses cover that gap. The lead picks the ones the change calls for. Correctness review does not cover them on its own.
+Diff-scoped review sees what a hunk gets wrong. It cannot see what is missing, because no line is wrong. These lenses cover that gap. Frame takes every lens whose "Use when" the change meets. Correctness review does not cover them on its own.
 
 ## Parity
 
@@ -16,7 +16,7 @@ Use when options or features can combine, or a resource has a create, use, dispo
 
 ## Exposure
 
-Use when the change writes anything that leaves the process: telemetry, logs, error reports, responses, files. List every value the change sends to such a destination and trace each one back to its source. Put a canary secret in each untrusted input, including metadata, headers, identifiers, URLs, and error text, and run every path that writes to the destination, not only the new one. Report every place the canary arrives unredacted, and every new field that skips the redaction the existing fields pass through.
+Use when the change adds or reshapes a value that leaves the process: telemetry, logs, error reports, responses, files. Trace each such value back to its source. Put a canary secret in each untrusted input that feeds it, including metadata, headers, identifiers, URLs, and error text, and run every path the change adds or alters that writes it out. Report every place the canary arrives unredacted, and every new value that skips the redaction its neighbors in the same payload pass through.
 
 ## Isolation
 
@@ -24,4 +24,4 @@ Use when the change touches state that outlives one request or call: instance fi
 
 ## Upgrade
 
-Use when the change ships in a package other code installs. Act as a user who upgrades and changes no code. Run their setup with default options before and after the change, and diff everything they can observe: payloads, schemas, return values and their identity, the arguments that reach their own handlers, thrown errors. Hold the change to every promise the docs make, such as "never throws" or "leaves your input unchanged". Report each difference the changelog does not name, and each one that breaks the promise of the version bump it ships under.
+Use when the change reaches consumers outside this repo: a package other code installs, a public API, a CLI, or a tool, event, or file schema that others read. Act as a consumer who upgrades or keeps calling and changes nothing on their side. Run their setup with default options before and after the change, and diff everything they can observe: payloads, schemas, return values and their identity, the arguments that reach their own handlers, thrown errors. Hold the change to every promise the docs make, such as "never throws" or "leaves your input unchanged". Report each difference the changelog does not name, and each one that breaks the compatibility promise it ships under, such as its version bump.
