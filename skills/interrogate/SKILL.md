@@ -11,7 +11,9 @@ Adversaries try to break a change or a design. A finding survives only when a ru
 
 The scope is what the user names. Given a PR number or URL, it is that PR: read it with `gh pr view <pr> --json title,body,baseRefName,headRefOid,files` and `gh pr diff <pr>`. Otherwise it is the branch diff from its merge base with the base branch, through the working tree. State the intent with the **in-your-own-words** skill (`${CLAUDE_SKILL_DIR}/../in-your-own-words/SKILL.md`), from the user's message, the commits, and the PR description. Ask the user when the intent is unclear.
 
-Pick the blind-spot lenses from `${CLAUDE_SKILL_DIR}/references/blind-spots.md` that the change calls for, or none. Diff-scoped attacks cannot see what is missing, and the lenses cover that gap.
+Pick the blind-spot lenses from `${CLAUDE_SKILL_DIR}/references/blind-spots.md` that the change calls for, or none. Diff-scoped attacks cannot see what is missing, and the lenses cover that gap. A change to an SDK or another package that other code installs always takes Exposure, Isolation, and Upgrade. Its users run it in setups no test of the author's covers, so those failures surface first in their production, not in review.
+
+Read the decision records (ADRs, design docs) in the directories the change touches, and add the decisions that bear on it to the intent. A change that quietly reverses one breaks the intent.
 
 ## Fan out
 
