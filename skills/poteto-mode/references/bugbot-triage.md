@@ -6,7 +6,7 @@ Use this reference when the Babysit playbook (`../playbooks/babysit.md`) handles
 
 Classify each review-bot thread before acting:
 
-- `fix`: The comment identifies a plausible correctness, security, privacy, data loss, auth, billing, migration, idempotency, race, or shipped-behavior issue. Fix it in the lowest owning PR, then reply with the commit SHA and resolve the thread.
+- `fix`: The comment identifies a plausible correctness, security, privacy, data loss, auth, billing, migration, idempotency, race, or shipped-behavior issue. Fix it in the lowest owning PR, then reply with the commit SHA and resolve the thread. Before pushing a fix that is more than a rename, a comment, or a one-line value change, run **interrogate** on the fix commits alone (scope: the diff from the commit before them), including a fix that rewrites the cited lines. Its findings follow Opening a PR step 2. Run one more pass only on fixes for those findings, then push, because review fixes that skip the gate tend to bring the next finding.
 - `dismiss`: The comment matches a documented low-risk noisy pattern, and the current code/context proves the concern does not need a code change. Reply with a short reason and resolve the thread.
 - `ask`: The comment is novel, high-severity, security/privacy/data-related, or ambiguous. Ask the user instead of guessing.
 

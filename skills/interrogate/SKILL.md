@@ -5,7 +5,7 @@ description: "Use for \"interrogate\", \"adversarial review\", \"multi-model rev
 
 # Interrogate
 
-Adversaries try to break a change or a design. A finding survives only when a run proves it. Report the findings. Do not apply fixes. When a poteto-mode playbook runs this skill as its pre-PR gate, hand the findings back to it instead of ending the turn. The gate's rules are Opening a PR step 2.
+Adversaries try to break a change or a design. A finding survives only when a run proves it. Report the findings. Do not apply fixes. When a poteto-mode playbook runs this skill as its pre-PR gate, or on a review fix per `../poteto-mode/references/bugbot-triage.md`, hand the findings back to it instead of ending the turn. The gate's rules are Opening a PR step 2.
 
 ## Frame
 
