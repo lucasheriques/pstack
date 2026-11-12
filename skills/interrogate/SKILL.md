@@ -5,7 +5,7 @@ description: "Use for \"interrogate\", \"adversarial review\", \"multi-model rev
 
 # Interrogate
 
-Adversaries try to break a change or a design. A finding survives only when a run proves it. Report the findings. Do not apply fixes. When a poteto-mode playbook runs this skill as its pre-PR gate, hand the findings back to it instead of ending the turn. The gate's rules are Opening a PR step 2.
+Adversaries try to break a change or a design. A finding survives only when a run proves it. Report the findings. Do not apply fixes. When a poteto-mode playbook runs this skill as its pre-PR gate, or on a review fix per `../poteto-mode/references/bugbot-triage.md`, hand the findings back to it instead of ending the turn. The gate's rules are Opening a PR step 2.
 
 ## Frame
 
@@ -13,17 +13,17 @@ The scope is what the user names. Given a PR number or URL, it is that PR: read 
 
 Take every blind-spot lens in `${CLAUDE_SKILL_DIR}/references/blind-spots.md` whose "Use when" the change meets. A matching lens is never optional. Diff-scoped attacks cannot see what is missing, and the lenses cover that gap.
 
-Read the decision records (ADRs, design docs) in the directories the change touches, and add the decisions that bear on it to the intent. A change that quietly reverses one breaks the intent.
+Read the decision records (ADRs, design docs) in the directories the change touches, and the specs the repository's agent instructions name for the behavior it changes, and add the decisions and requirements that bear on it to the intent. A change that quietly reverses one breaks the intent.
 
 ## Fan out
 
 Run Phase A steps 3 and 4 and Phase B of the **arena** skill (`${CLAUDE_SKILL_DIR}/../arena/SKILL.md`), with four changes. Read the `interrogate reviewers` role in `${CLAUDE_SKILL_DIR}/../poteto-mode/references/models.md` in place of `arena runners`. Spawn each adversary with `subagent_type: "general-purpose"` and `isolation: "worktree"`, and name the commit it checks out: the PR's head SHA for a PR, otherwise the current `HEAD`. Copy the scope's uncommitted changes into each worktree. In place of the arena task and rationale, give each adversary the scope, the intent, the chosen lenses, and this brief:
 
-> Break this change. Prove each finding with a run against the real code, such as a failing test, a repro script, or command output that shows the wrong behavior. For a design or plan, run a prototype or probe the current tree. Keep repros in your own worktree, and never push. Report each finding with a title, the exact command, the output it printed, and the output the intent requires. Leave out anything you did not run. That covers style, naming, structure, and risks that need a future change to matter. No findings is a valid result.
+> Break this change. Prove each finding with a run against the real code, such as a failing test, a repro script, or command output that shows the wrong behavior. For a design or plan, run a prototype or probe the current tree. Keep repros in your own worktree, and never push. Report each finding with a title, the exact command, the output it printed, and the output the intent requires. Report a failure on a path the change does not touch apart from your findings, as a follow-up. Leave out anything you did not run. That covers style, naming, structure, and risks that need a future change to matter. No findings is a valid result.
 
 ## Verify
 
-Verify each finding per arena Phase F by rerunning its command. Keep a finding when the output shows the failure and the failure breaks the intent. Drop the rest. Merge findings that share a root cause.
+Verify each finding per arena Phase F by rerunning its command. Keep a finding when the output shows the failure and the failure breaks the intent. A verified failure only on a path the change does not touch goes to Follow-ups, which do not block. Drop the rest. Merge findings that share a root cause.
 
 Skip arena Phases C, D, and E. Adversaries find different failures, so the verdict keeps every verified finding, not one adversary's list.
 
@@ -31,6 +31,7 @@ Skip arena Phases C, D, and E. Adversaries find different failures, so the verdi
 
 - **Intent**: the restatement.
 - **Findings**: for each verified finding, the command, its output, how it breaks the intent, and the adversaries that found it. Say "no verified findings" when none survive.
+- **Follow-ups**: verified failures on paths the change does not touch, each with its command and output. They do not block the change.
 - **Dropped**: for each adversary, the count of dropped findings and why.
 
 ## Someone else's PR
