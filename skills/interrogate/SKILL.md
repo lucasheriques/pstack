@@ -13,7 +13,7 @@ The scope is what the user names. Given a PR number or URL, it is that PR: read 
 
 Take every blind-spot lens in `${CLAUDE_SKILL_DIR}/references/blind-spots.md` whose "Use when" the change meets. A matching lens is never optional. Diff-scoped attacks cannot see what is missing, and the lenses cover that gap.
 
-Read the decision records (ADRs, design docs) in the directories the change touches, and add the decisions that bear on it to the intent. A change that quietly reverses one breaks the intent.
+Read the decision records (ADRs, design docs) in the directories the change touches, and the specs the repository's agent instructions name for the behavior it changes, and add the decisions and requirements that bear on it to the intent. A change that quietly reverses one breaks the intent.
 
 ## Fan out
 
