@@ -33,9 +33,9 @@ Upstream slugs (`claude-opus-5-5-max`, `gpt-5.6-sol-max`, `grok-4.7-xhigh-fast`,
 
 | Upstream | Port |
 |---|---|
-| `~/.cursor/skills/`, `.cursor/skills/` | `~/.claude/skills/`, `.claude/skills/` |
+| `~/.cursor/skills/`, `.cursor/skills/` | `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`, `.claude/skills/` |
 | `.cursor/rules/*.mdc` | the project's `CLAUDE.md` |
-| `~/.cursor/projects/<slug>/agent-transcripts/<uuid>/<uuid>.jsonl` | `~/.claude/projects/<slug>/<session-id>.jsonl`, where `<slug>` is the absolute working directory with every non-alphanumeric character replaced by `-`. Subagent transcripts are `~/.claude/projects/<slug>/<session-id>/subagents/agent-<id>.jsonl`. A skill gets its own session id as `${CLAUDE_SESSION_ID}` |
+| `~/.cursor/projects/<slug>/agent-transcripts/<uuid>/<uuid>.jsonl` | `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<slug>/<session-id>.jsonl`, where `<slug>` is the absolute working directory with every non-alphanumeric character replaced by `-`. Subagent transcripts are `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<slug>/<session-id>/subagents/agent-<id>.jsonl`. A skill gets its own session id as `${CLAUDE_SESSION_ID}` |
 | a principle skill `principle-<name>`, "the **<name>** principle skill", or "the **principle-<name>** skill" | `skills/poteto-mode/principles/principle-<name>.md`. Write the `**principle-<name>**` token in prose; the lint resolves it |
 | the agent store ("path in the system prompt") | a path the root names in the brief |
 
@@ -58,7 +58,7 @@ Upstream slugs (`claude-opus-5-5-max`, `gpt-5.6-sol-max`, `grok-4.7-xhigh-fast`,
 
 These override upstream wherever they conflict.
 
-- **Ready after the gate.** A draft is fine while work is in progress. The gate is Opening a PR step 2, and every playbook points there. Once it is clean, the agent opens or readies the PR itself, in the same turn, and never hands that back to the user. Agents merge only through `scripts/merge-gate` under `~/.claude/pstack/merge-policy.json`. Any other merge needs an explicit instruction to land or merge, and deploys outside a merge are the user's.
+- **Ready after the gate.** A draft is fine while work is in progress. The gate is Opening a PR step 2, and every playbook points there. Once it is clean, the agent opens or readies the PR itself, in the same turn, and never hands that back to the user. Agents merge only through `scripts/merge-gate` under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/pstack/merge-policy.json`. Any other merge needs an explicit instruction to land or merge, and deploys outside a merge are the user's.
 - **Stacks use `gh stack`.** `gh stack init`, `add`, `submit --auto`, `sync`, `rebase`. Raw `git rebase` or force-push on a stacked branch breaks GitHub's stack tracking. Fall back to raw git only when `gh stack` has no equivalent.
 - **Commit messages.** Title is one high-level line of what shipped (Conventional Commits form is fine). Body is what we did, why, and how it was tested (commands and results), plus reviewer notes when a decision or gap is worth flagging. Compact: the diff carries the details.
 - **Comments.** Never remove a comment that existed before this change. Comment cleanup (`no-comments`, `comment-sicko`) touches only comments this change added.
@@ -71,7 +71,8 @@ A sync must keep these even when upstream's line differs.
 
 - `interrogate`, `typescript-best-practices`, `poteto-mode`, and `statechart` drop `disable-model-invocation`. interrogate is the pre-PR gate CLAUDE.md names, statechart is what a generated formal verification skill tells agents to run, typescript-best-practices needs its `paths:` trigger, and poteto-mode is the auto-invoked entry point. Every other skill keeps the flag.
 - poteto-mode's Autonomy pauses for anything sent as the user (team chat, comments on other people's PRs) and for merges. Upstream let team chat proceed.
-- automate-me writes the mode skill to `~/.claude/skills/<handle>-mode/` instead of a project skill shipped by PR.
+- automate-me writes the mode skill to `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/<handle>-mode/` instead of a project skill shipped by PR.
+- A user-level Claude path is always written `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/...` (`process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude")` in TypeScript), never with `~`, which stays literal inside the double quotes agents put around paths. That way pstack works for a user who runs several Claude accounts, each with its own config dir. Each config dir has its own merge policy. The `hardcoded-config-dir` rule in `scripts/check-port.ts` flags a bare `~/.claude` or `$HOME/.claude`.
 - Autopilot-full needs an explicit merge grant. Babysit and Shipping never merge without an explicit request.
 - swarm isolation: a worktree for any swarm worker that checks out, builds, or runs.
 - Arena's cross-judge is the first `arena cross-judge pool` entry whose model differs from the parent's. Upstream picks by model family, and the port's pool is all Claude, so a family rule would always skip the judge. Opus and sonnet count as different judges.

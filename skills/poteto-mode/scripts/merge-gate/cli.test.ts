@@ -42,8 +42,10 @@ interface Scenario extends PrFixture {
   readonly merge?: FakeRule[1];
   readonly asyncMerge?: FakeRule[1];
   readonly asyncPolls?: FakeRule[1];
-  /** Contents of $HOME/.claude/pstack/merge-policy.json; null leaves it absent. */
+  /** Contents of <policyHome>/pstack/merge-policy.json; null leaves it absent. */
   readonly policy?: string | null;
+  /** Config dir holding the policy, relative to the fake HOME. Defaults to .claude. */
+  readonly policyHome?: string;
 }
 
 const outcome = (state: string, mergeCommit: string | null, head = HEAD): FakeResponse => ({
@@ -191,21 +193,24 @@ async function setup(scenario: Scenario = {}, fixture: readonly FakeRule[] = rul
   cleanups.push(gh.cleanup);
   const policy = scenario.policy === undefined ? JSON.stringify(POLICY) : scenario.policy;
   if (policy !== null)
-    await Bun.write(join(gh.directory, ".claude", "pstack", "merge-policy.json"), policy);
+    await Bun.write(join(gh.directory, scenario.policyHome ?? ".claude", "pstack", "merge-policy.json"), policy);
   return gh;
 }
 
 function runCli(
   gh: FakeGh,
   args: readonly string[],
-  cwd?: string
+  cwd?: string,
+  configDir?: string
 ): { readonly exit: number; readonly verdict: Verdict } {
+  const { CLAUDE_CONFIG_DIR: _, ...env } = process.env;
   const result = Bun.spawnSync([process.execPath, LAUNCHER, ...args], {
     cwd,
     env: {
-      ...process.env,
+      ...env,
       PATH: `${gh.bin}:${process.env.PATH ?? ""}`,
       HOME: gh.directory,
+      ...(configDir === undefined ? {} : { CLAUDE_CONFIG_DIR: join(gh.directory, configDir) }),
     },
   });
   return { exit: result.exitCode, verdict: JSON.parse(result.stdout.toString()) };
@@ -576,6 +581,16 @@ describe("merge-gate CLI against a fake gh", () => {
       },
     });
     expect(await gh.calls()).toEqual([]);
+  });
+
+  it.each<[string, string, string | undefined, Verdict["decision"]]>([
+    ["reads the default config dir when CLAUDE_CONFIG_DIR is unset", ".claude", undefined, "merge"],
+    ["reads CLAUDE_CONFIG_DIR when set", ".claude-personal", ".claude-personal", "merge"],
+    ["ignores the default config dir when CLAUDE_CONFIG_DIR is set", ".claude", ".claude-personal", "refuse"],
+  ])("%s", async (_name, policyHome, configDir, decision) => {
+    const gh = await setup({ policyHome });
+    const result = runCli(gh, ["7", "--repo", "acme/app", "--merge"], undefined, configDir);
+    expect(result.verdict.decision).toBe(decision);
   });
 
   it("infers the repo from the checkout's origin remote", async () => {
