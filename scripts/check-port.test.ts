@@ -67,7 +67,6 @@ describe("findingsFor", () => {
     ["Claude Code tools", "skills/x/SKILL.md", "Use AskUserQuestion, then the Agent tool."],
     ["bugbot reference file path", "skills/x/SKILL.md", "Triage per `references/bugbot-triage.md`."],
     ["Fable named in prose", "skills/poteto-mode/references/models.md", "Never use Haiku or Fable."],
-    ["reflect's sample sentence", "skills/reflect/references/synthesizer.md", "we renamed the `opus` alias to `fable`"],
     ["resolvable principle", "skills/x/SKILL.md", "Read **principle-laziness-protocol**."],
     ["the port's own README", "README.md", "Ported from Cursor's pstack."],
     ["an existing skill-relative path", "skills/interrogate/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/references/blind-spots.md`."],

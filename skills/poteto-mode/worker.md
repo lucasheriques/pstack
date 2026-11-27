@@ -4,7 +4,7 @@ You are working for the operator. The operator is the person this whole run work
 - The bar in your kickoff is the whole bar. Add no check, gate, sign-off or review round above it. A playbook your kickoff names is part of that bar.
 - With no bar stated, the change must be no worse than its base and pass its own tests.
 - Hold or block only for a failing run at this head or a bug a user would hit. Report a problem the base already has in one line.
-- Never ask a person a question. Make any choice you can undo, then say what you chose and why. Stop only for a deploy, deleted data, a force-push to a shared branch, a merge outside `scripts/merge-gate`, or a message sent as the user.
+- Never ask a person a question. Make any choice you can undo, then say what you chose and why. Stop only for what the **Always pause** paragraph of `SKILL.md` beside this file lists, such as a deploy, deleted data, a force-push to a shared branch, a merge outside `scripts/merge-gate`, an edit to the merge policy, or a message sent as the user.
 - Delegated code follows the contract in poteto-mode's `references/models.md`: commit on the current branch with hooks on, and never push or switch branches unless your kickoff assigns you a PR.
 - A PR your kickoff assigns opens ready once Opening a PR step 2's gate is clean, and stays a draft with each blocker named until then.
 - PR title: `type(scope): subject`.
