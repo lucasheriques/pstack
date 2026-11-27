@@ -14,7 +14,7 @@ This skill orchestrates three others: an inline mining pass (see step 1), the `s
 
 ### 0. Check for an existing skill
 
-Look for `${CLAUDE_CONFIG_DIR:-~/.claude}/skills/*-mode/SKILL.md` and `.claude/skills/*-mode/SKILL.md` matching the user's handle. If one exists, confirm intent with `AskUserQuestion` (unless they already said "update my skill" or similar):
+Look for `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/*-mode/SKILL.md` and `.claude/skills/*-mode/SKILL.md` matching the user's handle. If one exists, confirm intent with `AskUserQuestion` (unless they already said "update my skill" or similar):
 
 - Update the existing skill (default for repeat runs)
 - Start fresh (rare, ask why before doing it)
@@ -26,7 +26,7 @@ Update mode changes the rest of the flow:
 
 ### 1. Mine their history
 
-Locate the active workspace's transcripts before fanning out. They are `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<slug>/*.jsonl`, where `<slug>` is the working directory with every non-alphanumeric character replaced by `-`, plus the worktree slugs that extend it. Skip this session's own `${CLAUDE_SESSION_ID}.jsonl` and the `subagents/` directories. Never read another project's transcripts without being asked, since they hold private chats from unrelated work.
+Locate the active workspace's transcripts before fanning out. They are `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<slug>/*.jsonl`, where `<slug>` is the working directory with every non-alphanumeric character replaced by `-`, plus the worktree slugs that extend it. Skip this session's own `${CLAUDE_SESSION_ID}.jsonl` and the `subagents/` directories. Never read another project's transcripts without being asked, since they hold private chats from unrelated work.
 
 Survey recent agent conversations within that scope for recurring patterns. Run multiple parallel `pstack:read-only` subagents across slices of history (e.g. last 2-4 weeks, split into 3 slices so each has enough material). Each slice mining subagent reads transcripts from the workspace-scoped path the parent provides, looks for the signals below, and returns a short structured list of patterns it saw with evidence pointers. Default signals worth hunting:
 
@@ -66,7 +66,7 @@ The **poteto-mode** skill (`${CLAUDE_SKILL_DIR}/../poteto-mode/SKILL.md`) shows 
 
 Use the `skill-creator` skill to author the skill. Placement:
 
-- Path: `${CLAUDE_CONFIG_DIR:-~/.claude}/skills/<handle>-mode/SKILL.md`, or the existing mode skill's path in update mode.
+- Path: `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/<handle>-mode/SKILL.md`, or the existing mode skill's path in update mode.
 - Handle: the user's first name or chosen identifier.
 - Frontmatter `description`: trigger on their name + `/<handle>-mode` + "work in their style", not on generic keywords like "write code" or "review PR".
 - Frontmatter formatting: follow `skill-creator`'s YAML rules. Keep `description` as one YAML scalar. Quote it or use `description: >-` with indented continuation lines when punctuation or wrapping requires it.

@@ -61,7 +61,7 @@ gh pr list --author "@me" --state all --limit 1000 \
 	--json number,state,headRefName > "$prs" 2>/dev/null || true
 [ -s "$prs" ] || echo "[]" > "$prs"
 
-# Transcripts live in ${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<slug>/, where <slug> is the session's
+# Transcripts live in ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<slug>/, where <slug> is the session's
 # working directory with every non-alphanumeric character replaced by "-".
 # Sessions started inside .claude/worktrees/ share the main worktree's prefix.
 slugify() { printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'; }
@@ -108,8 +108,8 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
 	last="-"; last_ts=0
 	transcripts=$(ls -d "$projects/$main_slug"* "$projects/$(slugify "$wt")" 2>/dev/null | sort -u)
 	if [ -n "$transcripts" ]; then
-		f=$(printf '%s\n' "$transcripts" | xargs rg -l -e "${wt}/" -e "${wt}\"" 2>/dev/null \
-			| xargs stat "${stat_fmt[@]}" 2>/dev/null | sort -rn | head -1)
+		f=$(printf '%s\n' "$transcripts" | tr '\n' '\0' | xargs -0 rg -l -0 -e "${wt}/" -e "${wt}\"" 2>/dev/null \
+			| xargs -0 stat "${stat_fmt[@]}" 2>/dev/null | sort -rn | head -1)
 		if [ -n "$f" ]; then last_ts=$(echo "$f" | awk '{print $1}')
 			last=$(fmt_day "$last_ts" 2>/dev/null); fi
 	fi

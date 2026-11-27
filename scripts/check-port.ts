@@ -47,7 +47,7 @@ const rules: Rule[] = [
   { name: "principle-as-skill", pattern: /\bprinciple skill\b|\*\*principle-[a-z-]+\*\* skill\b|\bleaf skill\b/ },
   {
     name: "hardcoded-config-dir",
-    pattern: /^(?!.*CLAUDE_CONFIG_DIR).*(~\/\.claude\b|\$HOME\/\.claude\b|homedir\(\), "\.claude")/,
+    pattern: /~\/\.claude(?![\w-])|(?<!CLAUDE_CONFIG_DIR:-)\$\{?HOME\}?"?\/\.claude(?![\w-])|(?<!CLAUDE_CONFIG_DIR \|\| join\()homedir\(\),\s*["']\.claude|\$\{homedir\(\)\}\/\.claude/,
   },
   { name: "unprefixed-agent", pattern: /subagent_type: "(?!pstack:|general-purpose")/ },
 ];

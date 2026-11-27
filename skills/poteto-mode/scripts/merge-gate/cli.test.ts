@@ -584,9 +584,9 @@ describe("merge-gate CLI against a fake gh", () => {
   });
 
   it.each<[string, string, string | undefined, Verdict["decision"]]>([
-    ["reads $HOME/.claude when CLAUDE_CONFIG_DIR is unset", ".claude", undefined, "merge"],
+    ["reads the default config dir when CLAUDE_CONFIG_DIR is unset", ".claude", undefined, "merge"],
     ["reads CLAUDE_CONFIG_DIR when set", ".claude-personal", ".claude-personal", "merge"],
-    ["ignores $HOME/.claude when CLAUDE_CONFIG_DIR is set", ".claude", ".claude-personal", "refuse"],
+    ["ignores the default config dir when CLAUDE_CONFIG_DIR is set", ".claude", ".claude-personal", "refuse"],
   ])("%s", async (_name, policyHome, configDir, decision) => {
     const gh = await setup({ policyHome });
     const result = runCli(gh, ["7", "--repo", "acme/app", "--merge"], undefined, configDir);
