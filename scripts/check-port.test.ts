@@ -70,7 +70,7 @@ describe("findingsFor", () => {
     ["reflect's sample sentence", "skills/reflect/references/synthesizer.md", "we renamed the `opus` alias to `fable`"],
     ["resolvable principle", "skills/x/SKILL.md", "Read **principle-laziness-protocol**."],
     ["the port's own README", "README.md", "Ported from Cursor's pstack."],
-    ["an existing skill-relative path", "skills/how/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/references/explorer-prompt.md`."],
+    ["an existing skill-relative path", "skills/interrogate/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/references/blind-spots.md`."],
     ["a sibling skill path", "skills/teach/SKILL.md", "Read `${CLAUDE_SKILL_DIR}/../how/SKILL.md`."],
     ["a placeholder path", "skills/poteto-mode/SKILL.md", "Siblings live at `${CLAUDE_SKILL_DIR}/../<name>/SKILL.md`."],
     ["a pstack agent", "skills/x/SKILL.md", 'Use `subagent_type: "pstack:read-only"`.'],
