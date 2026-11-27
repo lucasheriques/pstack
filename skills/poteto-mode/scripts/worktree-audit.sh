@@ -61,11 +61,11 @@ gh pr list --author "@me" --state all --limit 1000 \
 	--json number,state,headRefName > "$prs" 2>/dev/null || true
 [ -s "$prs" ] || echo "[]" > "$prs"
 
-# Transcripts live in ~/.claude/projects/<slug>/, where <slug> is the session's
+# Transcripts live in ${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<slug>/, where <slug> is the session's
 # working directory with every non-alphanumeric character replaced by "-".
 # Sessions started inside .claude/worktrees/ share the main worktree's prefix.
 slugify() { printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'; }
-projects="$HOME/.claude/projects"
+projects="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
 main_slug=$(slugify "$main_wt")
 now=$(date +%s)
 

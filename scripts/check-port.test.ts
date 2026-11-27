@@ -56,12 +56,18 @@ describe("findingsFor", () => {
     ["skills/x/SKILL.md", "Read the leaf skill in full for any principle you apply.", "principle-as-skill"],
     ["skills/x/SKILL.md", 'Spawn `subagent_type: "poteto-agent"`.', "unprefixed-agent"],
     [".claude-plugin/plugin.json", '  "version": "0.15.4",', "plugin-version"],
+    ["skills/x/SKILL.md", "Read `~/.claude/projects/<slug>/`.", "hardcoded-config-dir"],
+    ["skills/x/scripts/a.sh", 'projects="$HOME/.claude/projects"', "hardcoded-config-dir"],
+    ["skills/x/scripts/a.ts", 'join(homedir(), ".claude", "pstack")', "hardcoded-config-dir"],
     [".claude-plugin/marketplace.json", '      "version": "1.0.0",', "plugin-version"],
   ])("%s flags %p as %s", (path, line, rule) => {
     expect(findingsFor(path, line).map((f) => f.rule)).toContain(rule);
   });
 
   test.each([
+    ["config dir with its fallback", "skills/x/SKILL.md", "Read `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/`."],
+    ["config dir fallback in shell", "skills/x/scripts/a.sh", 'projects="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"'],
+    ["a project-level .claude dir", "skills/x/SKILL.md", "Write `.claude/skills/verify-<app>/SKILL.md`."],
     ["TypeScript readonly modifier", "skills/typescript-best-practices/SKILL.md", "Mark it `readonly`."],
     ["git remote named origin", "skills/x/SKILL.md", "git fetch origin && git reset --hard origin/main"],
     ["Claude Code tools", "skills/x/SKILL.md", "Use AskUserQuestion, then the Agent tool."],

@@ -45,6 +45,10 @@ const rules: Rule[] = [
   { name: "cursor-bugbot", pattern: /\bbugbot\b(?!-triage)/i, exemptPaths: /\.ts$/ },
   { name: "effort-dial", pattern: /\breasoning[- ]level\b|\bstandard speed\b/ },
   { name: "principle-as-skill", pattern: /\bprinciple skill\b|\*\*principle-[a-z-]+\*\* skill\b|\bleaf skill\b/ },
+  {
+    name: "hardcoded-config-dir",
+    pattern: /^(?!.*CLAUDE_CONFIG_DIR).*(~\/\.claude\b|\$HOME\/\.claude\b|homedir\(\), "\.claude")/,
+  },
   { name: "unprefixed-agent", pattern: /subagent_type: "(?!pstack:|general-purpose")/ },
 ];
 

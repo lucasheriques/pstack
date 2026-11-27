@@ -209,7 +209,7 @@ export async function main(
   argv: readonly string[],
   runtime: Runtime = {
     github: new GhGateGitHub(),
-    policyPath: join(homedir(), ".claude", "pstack", "merge-policy.json"),
+    policyPath: join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "pstack", "merge-policy.json"),
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),
   }

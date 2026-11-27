@@ -37,7 +37,7 @@ Installing changes nothing until a skill runs. `poteto-mode` also switches on by
 
 To change which model a role uses, edit [`poteto-mode/references/models.md`](../poteto-mode/references/models.md). `claude plugin update` overwrites the installed copy, so fork the repo and install from the fork to keep an edit. Roles map to `opus`, `sonnet`, or `inherit`. If cost is the worry, say where the tokens go. pstack spends extra tokens on subagents and review panels. A role set to `sonnet` costs less than `opus`, and a shorter panel list runs fewer subagents, one for each entry. Save `/pstack:poteto-mode` for work that needs rigor.
 
-To let agents merge their own PRs, the user writes a policy at `~/.claude/pstack/merge-policy.json`. The README's "Letting agents merge" section has the format. Without it agents open ready PRs and never merge.
+To let agents merge their own PRs, the user writes a policy at `${CLAUDE_CONFIG_DIR:-~/.claude}/pstack/merge-policy.json`. The README's "Letting agents merge" section has the format. Without it agents open ready PRs and never merge.
 
 ## Start a task with `/pstack:poteto-mode`
 
