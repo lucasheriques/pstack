@@ -1,6 +1,6 @@
 ---
 name: read-only
-description: Read-only worker for pstack's explorers, investigators, and reviewers. Reads code, runs read-only shell commands (git log, gh pr view, tests), and queries MCP tools, but never edits files. Spawn it wherever a pstack skill asks for a read-only subagent.
+description: Read-only worker for pstack's explainers, investigators, and reviewers. Reads code, runs read-only shell commands (git log, gh pr view, tests), and queries MCP tools, but never edits files. Spawn it wherever a pstack skill asks for a read-only subagent.
 disallowedTools: Edit, Write, NotebookEdit
 background: true
 ---

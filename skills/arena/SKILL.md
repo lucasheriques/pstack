@@ -25,7 +25,7 @@ If a candidate produces no output, proceed with N-1 and note the dropout.
 
 ## Phase C: Cross-judge
 
-After all Phase B candidates complete, choose the first model in the `arena cross-judge pool` role in `models.md` that differs from the parent's model. If every entry matches the parent's model, skip the judge, pick the base alone in Phase D, and say so. Spawn one judge on that model with `subagent_type: "pstack:read-only"`. It sees the rubric and the candidates by path label, scores each criterion, and recommends a base with rationale. It runs in parallel with your reading in Phase D. Don't spawn it while candidates are still writing.
+After all Phase B candidates complete, choose the first model in the `arena cross-judge pool` role in `models.md` that differs from the parent's model. If every entry matches the parent's model, skip the judge, pick the base alone in Phase D, and say so. If you do not know the parent's model, use the first entry and say that the check did not run. Spawn one judge on that model with `subagent_type: "pstack:read-only"`. It sees the rubric and the candidates by path label, scores each criterion, and recommends a base with rationale. It runs in parallel with your reading in Phase D. Don't spawn it while candidates are still writing.
 
 ## Phase D: Pick a base
 

@@ -32,14 +32,15 @@ You can also call the other skills directly:
 | skill | use it when |
 |---|---|
 | `how` | you want a walkthrough of how a subsystem works |
-| `why` | you want to know why something was built this way, from every source your MCP tools reach |
+| `why` | you want to know why something was built this way, answered from the commits and PR discussions behind the code, with its inferences marked |
 | `teach` | you want to understand a change or subsystem, built up diagram by diagram |
 | `recall` | you're resuming work and want your recent context rebuilt from past sessions |
 | `bro` | you want the last message restated in plain language |
 | `ketchup` | you want a short catch-up on what changed since your last message, with what still needs you |
 | `ketchup-video` | you want the `ketchup` catch-up as a short subtitled video of slides, with the calls waiting on you as text under it |
 | `in-your-own-words` | you want the agent to play back your goal and the problem before it starts |
-| `sharpen` | you want a prompt made deeper, not bigger, before you send it. It returns the rewritten prompt and doesn't do the task |
+| `sharpen` | you want a prompt made deeper, not bigger, before you send it. It returns the rewritten prompt, which asks the agent to prototype any choice an experiment can settle, and doesn't do the task |
+| `reframe` | you can't name what you're building, so you can't ask an agent for it clearly. It lists the problems your description could be, teaches the expert terms for the likeliest, with checked sources, and rewrites your description with them |
 | `correct` | agents keep repeating the same mistake in a repo and each one should become impossible |
 | `benchmark-checklist` | you ran a benchmark and want the measurement vetted before you report it |
 | `poteto-help` | you're new to pstack or unsure which skill fits. Type `/pstack:poteto-help` with a question |
